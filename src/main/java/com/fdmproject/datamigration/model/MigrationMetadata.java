@@ -9,6 +9,8 @@ public class MigrationMetadata {
     MigrationMetadataKey key;
 
     private int numRowsMigrated;
+
+
     private State migrationState;
     private State accuracy;
     private State completeness;
@@ -64,4 +66,11 @@ public class MigrationMetadata {
     }
 
 
+    public State getMigrationState() {
+        return migrationState;
+    }
+
+    public void setMigrationState(State migrationState) {
+        this.migrationState = migrationState;
+    }
 }
