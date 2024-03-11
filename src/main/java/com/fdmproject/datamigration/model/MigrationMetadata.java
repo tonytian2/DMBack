@@ -8,11 +8,27 @@ public class MigrationMetadata {
     @EmbeddedId
     MigrationMetadataKey key;
 
+    private int numRowsMigrated;
+    private State migrationState;
+    private State accuracy;
+    private State completeness;
 
     public MigrationMetadata() {
     }
+
+    public MigrationMetadata(MigrationMetadataKey key, int numRowsMigrated) {
+        this.key = key;
+        this.numRowsMigrated = numRowsMigrated;
+    }
+
     public MigrationMetadata(String tableName, int attempt) {
+
         this.key = new MigrationMetadataKey(tableName,attempt);
+        this.numRowsMigrated = 0;
+        migrationState = State.NOT_STARTED;
+        accuracy = State.NOT_STARTED;
+        completeness = State.NOT_STARTED;
+        ;
     }
 
     public MigrationMetadataKey getKey() {
@@ -47,7 +63,5 @@ public class MigrationMetadata {
         this.completeness = completeness;
     }
 
-    private int numRowsMigrated;
-    private State accuracy;
-    private State completeness;
+
 }

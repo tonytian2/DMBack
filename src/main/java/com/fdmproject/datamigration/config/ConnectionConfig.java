@@ -12,11 +12,12 @@ public class ConnectionConfig {
 
         return new DBConnection();
     }
-      @Bean("DestinationDBConnection")
-      public DBConnection DestinationDBConnection(){
+    @Bean("DestinationDBConnection")
+    public DBConnection DestinationDBConnection(){
 
           return new DBConnection();
-      }
+    }
+
 
 
 }

@@ -23,6 +23,14 @@ public class DatabaseMetadata {
 
     }
 
+    public DatabaseMetadata(String tableName, String columnNames, String columnTypes, int rowCount, String snapshotPath) {
+        this.tableName = tableName;
+        this.columnNames = columnNames;
+        this.columnTypes = columnTypes;
+        this.rowCount = rowCount;
+        this.snapshotPath = snapshotPath;
+    }
+
     public String getTableName() {
         return tableName;
     }
