@@ -12,9 +12,10 @@ public class DBConnection {
 
     }
 
-    public DBConnection(String url, String username, String password) throws SQLException {
+    public void setConnection(String url, String username, String password) throws SQLException {
         this.connection = DriverManager.getConnection(url, username, password);
     }
+
 
     public Connection getConnection(){
         return this.connection;
