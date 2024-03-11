@@ -18,6 +18,7 @@ public class DatabaseMetadata {
     @Id
     private String tableName;
 
-    @ElementCollection
-    private List<String> columnNames = new ArrayList<>();
+
+    private String columnNames;
+
 }
