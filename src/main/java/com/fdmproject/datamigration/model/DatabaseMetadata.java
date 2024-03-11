@@ -1,24 +1,66 @@
 package com.fdmproject.datamigration.model;
 
 
-import jakarta.persistence.*;
-
-import java.util.ArrayList;
-import java.util.List;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 
 @Entity
 @Table(name = "databaseMetadata")
 public class DatabaseMetadata {
 
-    public DatabaseMetadata(){
+    @Id
+    private String tableName;
+    @Column(length = 1023)
+    private String columnNames;
+    @Column(length = 1023)
+    private String columnTypes;
+    private int rowCount;
+    private String snapshotPath;
+
+    public DatabaseMetadata() {
 
     }
 
+    public String getTableName() {
+        return tableName;
+    }
 
-    @Id
-    private String tableName;
+    public void setTableName(String tableName) {
+        this.tableName = tableName;
+    }
 
+    public String getColumnNames() {
+        return columnNames;
+    }
 
-    private String columnNames;
+    public void setColumnNames(String columnNames) {
+        this.columnNames = columnNames;
+    }
+
+    public String getColumnTypes() {
+        return columnTypes;
+    }
+
+    public void setColumnTypes(String columnTypes) {
+        this.columnTypes = columnTypes;
+    }
+
+    public int getRowCount() {
+        return rowCount;
+    }
+
+    public void setRowCount(int rowCount) {
+        this.rowCount = rowCount;
+    }
+
+    public String getSnapshotPath() {
+        return snapshotPath;
+    }
+
+    public void setSnapshotPath(String snapshotPath) {
+        this.snapshotPath = snapshotPath;
+    }
 
 }
