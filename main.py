@@ -60,7 +60,7 @@ def set_local_credentials():
 def get_table_info():
     if(localDbConnection.isValid):
 
-        source_engine = create_engine(localDbConnection.connection_string())
+        source_engine = localDbConnection.get_engine()
         source_metadata = MetaData()
         source_metadata.reflect(source_engine)
         Session = sessionmaker(bind=source_engine)
