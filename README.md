@@ -3,7 +3,6 @@
 
 Backend for migrating a MySQL project from a local database to a cloud (Azure) platform.
 
-
 ## Set up
 
 ### Set up virtual environment
@@ -36,3 +35,12 @@ pip install Flask
 pip install sqlalchemy
 pip install pymysql
 ```
+## Run Locally
+
+Start the server using the following command:
+```bash
+flask --app main run --debug
+```
+Make requests to `localhost:5000`
+
+the `--debug` flag means the server will auto-reload when a change is detected.
