@@ -5,21 +5,35 @@ from sqlalchemy.orm import sessionmaker
 app = Flask(__name__)
 
 class DbConnection(object):
-    def __init__(self):
-        return
-    def __init__(self, username, password, url, connector):
+    def __init__(self, username = None, password = None, url = None, connector = None):
         self.username = username
         self.password = password
         self.url = url
         self.connector = connector
+        if(connector != None):
+            self.engine = create_engine(self.connection_string())
+        else:
+            self.engine = None
         self.isValid = False
 
     def connection_string(self):
         return f"mysql+{self.connector}://{self.username}:{self.password}@{self.url}"
+    
+    def get_engine(self):
+        if(self.connector != None and self.engine == None):
+            self.engine = create_engine(self.connection_string())
+        return self.engine
+    
+    def reset(self):
+        self.username = None
+        self.password = None
+        self.url = None
+        self.connector = None
+        self.engine = None
+        self.isValid = False
 
-
-localDbConnection = DbConnection("username","password","url","connector")
-cloudDbConnection = DbConnection("username","password","url","connector")
+localDbConnection = DbConnection()
+cloudDbConnection = DbConnection()
 
 @app.route('/api/set_credentials', methods=['POST'])
 def set_local_credentials():
@@ -32,8 +46,8 @@ def set_local_credentials():
     cloudDbConnection.url = request.form['cloud_url']
     cloudDbConnection.connector = "mysqlconnector"
     # Establish the database connections
-    source_engine = create_engine(localDbConnection.connection_string())
-    destination_engine = create_engine(cloudDbConnection.connection_string())
+    source_engine = localDbConnection.get_engine()
+    destination_engine = cloudDbConnection.get_engine()
     try:
         source_engine.connect()
         localDbConnection.isValid = True
@@ -76,3 +90,9 @@ def get_table_info():
         source_session.close()
         return json_response
     return 'Local connection not valid'
+
+@app.route('/api/reset', methods=['GET'])
+def reset():
+    localDbConnection.reset()
+    cloudDbConnection.reset()
+    return make_response("OK", 200)
