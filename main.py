@@ -7,32 +7,49 @@ app = Flask(__name__)
 class DbConnection(object):
     def __init__(self):
         return
-    def __init__(self, username, password, url):
+    def __init__(self, username, password, url, connector):
         self.username = username
         self.password = password
         self.url = url
+        self.connector = connector
         self.isValid = False
 
     def connection_string(self):
-        return f"mysql+pymysql://{self.username}:{self.password}@{self.url}"
+        return f"mysql+{self.connector}://{self.username}:{self.password}@{self.url}"
 
 
-localDbConnection = DbConnection("username","password","url")
+localDbConnection = DbConnection("username","password","url","connector")
+cloudDbConnection = DbConnection("username","password","url","connector")
 
-@app.route('/api/set_local_credentials', methods=['POST'])
+@app.route('/api/set_credentials', methods=['POST'])
 def set_local_credentials():
-    localDbConnection.username=request.form['username']
-    localDbConnection.password=request.form['password']
-    localDbConnection.url=request.form['url']
-    # Establish the database connection
+    localDbConnection.username = request.form['local_username']
+    localDbConnection.password = request.form['local_password']
+    localDbConnection.url = request.form['local_url']
+    localDbConnection.connector = "pymysql"
+    cloudDbConnection.username = request.form['cloud_username']
+    cloudDbConnection.password = request.form['cloud_password']
+    cloudDbConnection.url = request.form['cloud_url']
+    cloudDbConnection.connector = "mysqlconnector"
+    # Establish the database connections
     source_engine = create_engine(localDbConnection.connection_string())
+    destination_engine = create_engine(cloudDbConnection.connection_string())
     try:
         source_engine.connect()
         localDbConnection.isValid = True
+        try:
+            destination_engine.connect()
+            cloudDbConnection.isValid = True
+        except Exception:
+            cloudDbConnection.isValid = False
+            return make_response("Cloud credentials incorrect", 511)
+        
         return make_response("OK", 200)
-    except:
-        return make_response("Connection not valid", 511)
-
+    except Exception:
+        localDbConnection.isValid = False
+        cloudDbConnection.isValid = False
+        return make_response("Local credentials incorrect", 511)
+    
 @app.route('/api/get_table_info', methods=['GET'])
 def get_table_info():
     if(localDbConnection.isValid):
