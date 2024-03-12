@@ -29,6 +29,7 @@ cloudDbConnection = DbConnection()
 
 @app.route('/api/set_credentials', methods=['POST'])
 def set_local_credentials():
+    reset()
     localDbConnection.username = request.form['local_username']
     localDbConnection.password = request.form['local_password']
     localDbConnection.url = request.form['local_url']
@@ -47,13 +48,13 @@ def set_local_credentials():
             destination_engine.connect()
             cloudDbConnection.isValid = True
         except Exception:
-            cloudDbConnection.isValid = False
+            cloudDbConnection.reset()
             return make_response("Cloud credentials incorrect", 511)
         
         return make_response("OK", 200)
     except Exception:
-        localDbConnection.isValid = False
-        cloudDbConnection.isValid = False
+        localDbConnection.reset()
+        cloudDbConnection.reset()
         return make_response("Local credentials incorrect", 511)
     
 @app.route('/api/get_table_info', methods=['GET'])
