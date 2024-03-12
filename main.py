@@ -5,16 +5,8 @@ from sqlalchemy.orm import sessionmaker
 app = Flask(__name__)
 
 class DbConnection(object):
-    def __init__(self, username = None, password = None, url = None, connector = None):
-        self.username = username
-        self.password = password
-        self.url = url
-        self.connector = connector
-        if(connector != None):
-            self.engine = create_engine(self.connection_string())
-        else:
-            self.engine = None
-        self.isValid = False
+    def __init__(self):
+        self.reset()
 
     def connection_string(self):
         return f"mysql+{self.connector}://{self.username}:{self.password}@{self.url}"
