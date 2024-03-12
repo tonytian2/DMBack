@@ -7,6 +7,7 @@ Backend for migrating a MySQL project from a local database to a cloud (Azure) p
 ## Set up
 
 ### Set up virtual environment
+Navigate to project root directory, then set up virtual environment:
 #### OSX/Linux
 ```bash
 python3 -m venv .venv
