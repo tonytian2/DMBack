@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request, make_response, session
+from flask import Blueprint, jsonify, make_response, session
 from sqlalchemy import create_engine, MetaData, text
 from sqlalchemy.orm import sessionmaker
 from api.credentials import localDbConnectionDict, cloudDbConnectionDict
