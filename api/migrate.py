@@ -1,7 +1,7 @@
-from flask import Blueprint, make_response, request
-from api.credentials import localDbConnection, cloudDbConnection
+from flask import Blueprint, make_response, request, session
 from sqlalchemy import MetaData, text
 from sqlalchemy.orm import sessionmaker
+from api.credentials import localDbConnectionDict, cloudDbConnectionDict
 import decimal, datetime
 
 NoneType = type(None)
@@ -29,6 +29,11 @@ migrate_blueprint = Blueprint('migrate', __name__)
 
 @migrate_blueprint.route('/api/migrate_tables', methods = ['GET'])
 def migrate_tables():
+    if 'session_id' not in session:
+        return make_response("No connection defined in current session, define session credentials first", 428)
+    session_id = session['session_id']
+    localDbConnection = localDbConnectionDict['session_id']
+    cloudDbConnection = cloudDbConnectionDict['session_id']
     try:
         if(localDbConnection.isValid and cloudDbConnection.isValid):
 
@@ -100,6 +105,12 @@ def migrate_tables():
  
 @migrate_blueprint.route('/api/migrate_all', methods=['GET'])
 def migrate_all():
+    if 'session_id' not in session:
+        return make_response("No connection defined in current session, define session credentials first", 428)
+    
+    session_id = session['session_id']
+    localDbConnection = localDbConnectionDict['session_id']
+    cloudDbConnection = cloudDbConnectionDict['session_id']
     try:
         if(localDbConnection.isValid and cloudDbConnection.isValid):
             source_engine = localDbConnection.get_engine()
