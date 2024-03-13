@@ -28,14 +28,13 @@ globalVariables = GlobalVariables()
 migrate_blueprint = Blueprint('migrate', __name__)
 
 @migrate_blueprint.route('/api/migrate_tables', methods = ['GET'])
-
 def migrate_tables():
     try:
         if(localDbConnection.isValid and cloudDbConnection.isValid):
 
             data = request.get_json()
-            print(data)
-            print(data["tables"])
+            # print(data)
+            # print(data["tables"])
             if "tables" in data and isinstance(data["tables"], list):
                 table_names = data['tables']
                 source_engine = localDbConnection.get_engine()
@@ -81,8 +80,8 @@ def migrate_tables():
                 destination_session.commit()
 
                 with destination_engine.connect() as con:
-                    r = con.execute(text(f"SELECT * from {table_name}"))
-                    print(r.mappings().all())
+                    # r = con.execute(text(f"SELECT * from {table_name}"))
+                    # print(r.mappings().all())
                     con.execute(text("SET FOREIGN_KEY_CHECKS=1"))
                     con.commit()
 
