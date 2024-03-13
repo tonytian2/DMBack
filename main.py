@@ -81,8 +81,8 @@ def get_table_info():
         
         json_response = jsonify(columnNames)
         source_session.close()
-        return json_response
-    return 'Local connection not valid'
+        return make_response(json_response,200)
+    return make_response("No connection to local database", 511)
 
 @app.route('/api/reset', methods=['GET'])
 def reset():
