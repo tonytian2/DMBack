@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 
 schema_data_blueprint = Blueprint('schema_data', __name__)
 
-@schema_data_blueprint.route('/api/get_table_info', methods=['GET'])
+@schema_data_blueprint.route('/api/get_schema_info', methods=['GET'])
 def get_table_info():
     if(localDbConnection.isValid):
 
