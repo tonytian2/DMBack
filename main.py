@@ -25,6 +25,24 @@ class DbConnection(object):
         self.engine = None
         self.isValid = False
 
+class GlobalVariables():
+    def __init__(self):
+        self.migratedRows = 0
+        self.totalRows
+        self.migratedTables = []
+    def getMigratedRows(self):
+        return self.migratedRows
+    def setMigratedRows(self, i):
+        self.migratedRows = i
+        
+    def getMigratedTables(self):
+        return self.migratedTables
+    
+    def setMigratedTables(self, t):
+        self.migratedTables.append(t)
+    
+
+globalVariables = GlobalVariables()
 localDbConnection = DbConnection()
 cloudDbConnection = DbConnection()
 
@@ -132,15 +150,18 @@ def migrate_all():
                 with destination_engine.connect() as conn:
                     conn.execute(text(f"truncate {table_name};"))
                     entire_value = ""
+                    migratedRowCount = 0
                     for row in rows:
                         #print([type(i) for i in row])
                         values = ', '.join([(str(v) if not isinstance(v,NoneType) else "NULL") if (isinstance(v, int) or isinstance(v,NoneType) or isinstance(v,decimal.Decimal) or isinstance(v, float)) else '"' + ( v.strftime('%Y-%m-%d %H:%M:%S') if isinstance(v,datetime.datetime) else v) + '"' for v in row])
                         wraped_values = "( " + values + " ), "
                         entire_value += wraped_values
+                        migratedRowCount += 1
                         #print(f"INSERT INTO {table_name} VALUES ({values})")
                     #print(entire_value[:-2])
                     conn.execute(text(f"INSERT INTO {table_name} VALUES {entire_value[:-2]}"))
                     conn.commit()
+                    globalVariables.setMigratedRows(migratedRowCount)
                 
 
 
