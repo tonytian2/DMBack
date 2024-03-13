@@ -1,9 +1,10 @@
 from flask import Flask, jsonify, request, make_response
 from sqlalchemy import create_engine, MetaData, text, inspect
 from sqlalchemy.orm import sessionmaker
+import decimal,datetime
 
 app = Flask(__name__)
-
+NoneType = type(None)
 class DbConnection(object):
     def __init__(self):
         self.reset()
@@ -47,12 +48,16 @@ def set_local_credentials():
         try:
             destination_engine.connect()
             cloudDbConnection.isValid = True
-        except Exception:
+        except Exception as error:
+    # handle the exception
+            print("An exception occurred:", error) 
             cloudDbConnection.reset()
             return make_response("Cloud credentials incorrect", 511)
         
         return make_response("OK", 200)
-    except Exception:
+    except Exception as error:
+    # handle the exception
+        print("An exception occurred:", error) 
         localDbConnection.reset()
         cloudDbConnection.reset()
         return make_response("Local credentials incorrect", 511)
@@ -83,6 +88,81 @@ def get_table_info():
         source_session.close()
         return json_response
     return 'Local connection not valid'
+
+
+
+
+@app.route('/api/migrate_all', methods=['GET'])
+def migrate_all():
+    try:
+        if(localDbConnection.isValid and cloudDbConnection.isValid):
+            source_engine = localDbConnection.get_engine()
+            destination_engine = cloudDbConnection.get_engine()
+
+            source_metadata = MetaData()
+            source_metadata.reflect(source_engine)
+            
+            with destination_engine.connect() as con:
+                con.execute(text("SET FOREIGN_KEY_CHECKS=0"))
+                con.commit()
+                #r = con.execute(text("SELECT table_name FROM information_schema.tables WHERE table_schema = 'destination';"))
+                #print(r.mappings().all())
+
+
+            # Create a session for the source database
+            Session = sessionmaker(bind=source_engine)
+            source_session = Session()
+
+            # Create a session for the destination database
+            Session = sessionmaker(bind=destination_engine)
+            destination_session = Session()
+        
+            # Iterate over tables in the source database
+            for i in range(len(source_metadata.tables.keys())):
+                table_name = list(source_metadata.tables.keys())[i]
+                source_table = source_metadata.tables[table_name]
+                #print("source", source_table)
+
+                rows = source_session.query(source_table).all()
+                #print(rows)
+                
+                #list_of_column_names = list(source_metadata.tables.values())[i].columns.keys()
+                #dic = [{list_of_column_names[i]:row[i] for i in range(len(list_of_column_names))} for row in rows]
+                # Insert rows into the destination table
+                with destination_engine.connect() as conn:
+                    conn.execute(text(f"truncate {table_name};"))
+                    entire_value = ""
+                    for row in rows:
+                        #print([type(i) for i in row])
+                        values = ', '.join([(str(v) if not isinstance(v,NoneType) else "NULL") if (isinstance(v, int) or isinstance(v,NoneType) or isinstance(v,decimal.Decimal) or isinstance(v, float)) else '"' + ( v.strftime('%Y-%m-%d %H:%M:%S') if isinstance(v,datetime.datetime) else v) + '"' for v in row])
+                        wraped_values = "( " + values + " ), "
+                        entire_value += wraped_values
+                        #print(f"INSERT INTO {table_name} VALUES ({values})")
+                    #print(entire_value[:-2])
+                    conn.execute(text(f"INSERT INTO {table_name} VALUES {entire_value[:-2]}"))
+                    conn.commit()
+                
+
+
+            # Commit the changes in the destination database
+            destination_session.commit()
+
+            # Close the sessions
+            source_session.close()
+            destination_session.close()
+            return "OK"
+        else:
+            return "Database credentials incorrect."
+    
+              
+    except Exception as error:
+    # handle the exception
+        print("An exception occurred:", error) 
+        return "Not ok"
+
+
+
+
 
 @app.route('/api/reset', methods=['GET'])
 def reset():
