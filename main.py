@@ -167,6 +167,10 @@ def migrate_all():
 
             # Commit the changes in the destination database
             destination_session.commit()
+            
+            with destination_engine.connect() as con:
+                con.execute(text("SET FOREIGN_KEY_CHECKS=1"))
+                con.commit()
 
             # Close the sessions
             source_session.close()
