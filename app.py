@@ -92,41 +92,10 @@ def reset():
     return make_response("OK", 200)
 
 
-# # setting up the Azure connection with the input of username, password, hostname, and database name
-# @app.route('/api/set_azure_credentials', methods=['POST'])
-# # engine = create_engine(f'mysql+mysqlconnector://fdm:qwe123!!@data-migration.mysql.database.azure.com/destination')
-# def set_azure_credentials():
-#     username = request.form['username']
-#     password = request.form['password']
-#     hostname = request.form['hostname']
-#     database_name = request.form['database_name']
-    
-#     connection_string = 'mysql+mysqlconnector://' + username + ':' + password + '@' + hostname + '/' + database_name
-    
-#     # Establish the database connection
-#     source_engine = create_engine(connection_string)
-#     try:
-#         source_engine.connect()
-#         localDbConnection.username = username
-#         localDbConnection.password = password
-#         localDbConnection.url = hostname
-#         localDbConnection.schema = database_name
-#         localDbConnection.isValid = True
-#         return 'Ok'
-#     except Exception as e:
-#         traceback.print_exc()
-#         return 'Not Ok: ' + str(e)
-    
 
-# my job 
-    # validate completeness
-    # optional param: list of tables
-    # send update per table
 
-    # validate accuracy 
-    # param: percentage 
-    # optional param: list of tables
-    # send update per table
+
+
 
 completed_row_count = 0
 def resetCompleted_row_count():
@@ -168,6 +137,7 @@ def updateCompletedRowCount(table_name):
     else:
         return make_response("Failed to connect to the cloud", 511)
 
+# this one is for the progress bar
 @app.route('/api/getValidateCompleteness', methods=['GET'])
 def getValidateCompleteness():
     if localDbConnection.isValid:
@@ -199,52 +169,77 @@ def getValidateCompleteness():
 
     return 'Local connection not valid'
 
-
-# for validating accuracy 
-# get cloud connection from both local and cloud, compare each table 
-@app.route('/api/getValidationAccueacy/<percentage>', methods=['GET'])
-def getValidationAccueacy(percentage):
-    if(localDbConnection.isValid and cloudDbConnection.isValid):
-        # check for each tables in local and cloud 
+# this one is for checking the completeness for a specific table 
+@app.route('/api/getValidateCompletenessbyTable/<tableName>', methods=['GET'])
+def getValidateCompletenessbyTable(tableName):
+    if localDbConnection.isValid and cloudDbConnection.isValid:
         local_engine = localDbConnection.get_engine()
         cloud_engine = cloudDbConnection.get_engine()
 
         local_metadata = MetaData()
-        cloud_metadata = MetaData()
-
         local_metadata.reflect(local_engine)
-        cloud_metadata.reflect(cloud_engine)
 
-        local_tables = local_metadata.tables
-        cloud_tables = cloud_metadata.tables
+        if tableName not in local_metadata.tables:
+            return f"Table '{tableName}' does not exist in the local database."
 
-        validation_results = {}
+        Session = sessionmaker(bind=local_engine)
+        local_session = Session()
+        cloud_session = Session(bind=cloud_engine)
 
-        for table_name in local_tables:
-            if table_name in cloud_tables:
-                local_table = local_tables[table_name]
-                cloud_table = cloud_tables[table_name]
+        local_table = local_metadata.tables[tableName]
 
-                local_row_count = local_engine.execute(local_table.count()).scalar()
-                cloud_row_count = cloud_engine.execute(cloud_table.count()).scalar()
+        # Get row count for the specified table in the local database
+        local_row_count = local_session.query(local_table).count()
 
-                if local_row_count == cloud_row_count:
-                    match_count = int(local_row_count * float(percentage))
+        # Get row count for the specified table in the cloud database
+        cloud_row_count = cloud_session.query(local_table).count()
 
-                    local_rows = local_engine.execute(local_table.select().limit(match_count)).fetchall()
-                    cloud_rows = cloud_engine.execute(cloud_table.select().limit(match_count)).fetchall()
+        if local_row_count == cloud_row_count:
+            return "The row count matches between the local and cloud databases."
+        else:
+            return "The row count does not match between the local and cloud databases."
 
-                    match_count = sum(local_row == cloud_row for local_row, cloud_row in zip(local_rows, cloud_rows))
+    return "Local or cloud connection not valid"
 
-                    validation_results[table_name] = match_count
 
-        return jsonify(validation_results)
 
-    else:
-        return jsonify(error='One or both database connections are not valid')
-        
 
-    # total_row_local = 
+# for validating accuracy 
+# get cloud connection from both local and cloud, compare each table 
+@app.route('/api/getValidationAccueacy/<tableName>/<percentage>', methods=['GET'])
+def getValidationAccuracy(tableName, percentage):
+    source_engine = localDbConnection.get_engine()
+    cloud_engine = cloudDbConnection.get_engine()
 
-    # return 0
+    source_metadata = MetaData()
+    source_metadata.reflect(source_engine)
+    Session = sessionmaker(bind=source_engine)
+    source_session = Session()
+
+    try:
+        source_table = source_metadata.tables[tableName]
+
+        # Query the local database
+        local_row_count = source_session.query(source_table).count()
+        local_rows = source_session.query(source_table).limit(int(local_row_count * float(percentage))).all()
+
+        # Query the cloud database
+        with cloud_engine.connect() as con:
+            result = con.execute(text(f"SELECT * from {tableName} LIMIT {int(local_row_count * float(percentage))}"))
+            cloud_rows = result.fetchall()
+
+        # Compare the accuracy
+        match_count = sum(local_row == cloud_row for local_row, cloud_row in zip(local_rows, cloud_rows))
+
+        accuracy = match_count / len(local_rows) * 100
+
+        return jsonify({"accuracy": accuracy})
+
+    except Exception as e:
+        error_message = f"Error retrieving data: {str(e)}"
+        response = make_response(jsonify({"error": error_message}), 500)
+        return response
+
+    finally:
+        source_session.close()
 
