@@ -3,9 +3,10 @@ from sqlalchemy import MetaData, text
 from sqlalchemy.orm import sessionmaker
 from api.credentials import localDbConnectionDict, cloudDbConnectionDict
 import decimal, datetime
-
+import logging
 NoneType = type(None)
 
+logging.basicConfig(filename='progress.log', filemode='w', format='%(message)s')
 class GlobalVariables():
     def __init__(self):
         self.migratedRows = 0
@@ -161,8 +162,8 @@ def migrate_all():
                     conn.execute(text(f"INSERT INTO {table_name} VALUES {entire_value[:-2]}"))
                     conn.commit()
                     globalVariables.setMigratedRows(migratedRowCount)
+                logging.info(table_name)    
                 
-
 
             # Commit the changes in the destination database
             destination_session.commit()
