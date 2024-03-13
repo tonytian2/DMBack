@@ -2,6 +2,36 @@ from flask import Blueprint, make_response, request
 from sqlalchemy import create_engine
 
 class DbConnection(object):
+    """
+    A class used to represent a connection to a database
+    
+    Attributes
+    ----------
+    username : str
+        the username for the database
+    password : str
+        the password for the given username for the database
+    url : str
+        the url which the database is hosted on. Formatted as {hostname}/{schema}
+    connector : str
+        the type of connector to use when connecting to the database, e.g. pymysql, mysqlconnector
+    engine : sqlalchemy.Engine
+        the engine for accessing the database
+    isValid : bool
+        whether a connection to the database can be established with the given parameters
+
+    Methods
+    -------
+    connection_string()
+        Returns the connection string to be given to the engine
+
+    get_engine()
+        Returns the engine that connects to the database
+
+    reset()
+        Resets all the parameter values to their default (None, isValid is set to False)
+    """
+
     def __init__(self):
         self.reset()
 
@@ -9,6 +39,11 @@ class DbConnection(object):
         return f"mysql+{self.connector}://{self.username}:{self.password}@{self.url}"
     
     def get_engine(self):
+        """
+            Returns the engine that connects to the database. If an engine does
+            not exist, it creates one
+        """
+        
         if(self.connector != None and self.engine == None):
             self.engine = create_engine(self.connection_string())
         return self.engine
