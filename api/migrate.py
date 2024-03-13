@@ -1,4 +1,4 @@
-from flask import Blueprint, make_response
+from flask import Blueprint, make_response, request
 from api.credentials import localDbConnection, cloudDbConnection
 from sqlalchemy import MetaData, text
 from sqlalchemy.orm import sessionmaker
@@ -15,18 +15,90 @@ class GlobalVariables():
         return self.migratedRows
     def setMigratedRows(self, i):
         self.migratedRows = i
-        
+
     def getMigratedTables(self):
         return self.migratedTables
     
     def setMigratedTables(self, t):
         self.migratedTables.append(t)
-    
+
 
 globalVariables = GlobalVariables()
 
 migrate_blueprint = Blueprint('migrate', __name__)
 
+@migrate_blueprint.route('/api/migrate_tables', methods = ['GET'])
+
+def migrate_tables():
+    try:
+        if(localDbConnection.isValid and cloudDbConnection.isValid):
+
+            data = request.get_json()
+            print(data)
+            print(data["tables"])
+            if "tables" in data and isinstance(data["tables"], list):
+                table_names = data['tables']
+                source_engine = localDbConnection.get_engine()
+                destination_engine = cloudDbConnection.get_engine()
+
+                source_metadata = MetaData()
+                source_metadata.reflect(source_engine)
+
+                with destination_engine.connect() as con:
+                    con.execute(text("SET FOREIGN_KEY_CHECKS=0"))
+                    con.commit()
+
+                Session = sessionmaker(bind=source_engine)
+                source_session = Session()
+
+                # Create a session for the destination database
+                Session = sessionmaker(bind=destination_engine)
+                destination_session = Session()
+
+                # Iterate over tables in the source database
+                for i in range(len(table_names)):
+                    table_name = table_names[i]
+                    source_table = source_metadata.tables[table_name]
+                    rows = source_session.query(source_table).all()
+                    with destination_engine.connect() as conn:
+                        conn.execute(text(f"truncate {table_name};"))
+                        entire_value = ""
+                        #migratedRowCount = 0
+                        for row in rows:
+                            #print([type(i) for i in row])
+                            values = ', '.join([(str(v) if not isinstance(v,NoneType) else "NULL") if (isinstance(v, int) or isinstance(v,NoneType) or isinstance(v,decimal.Decimal) or isinstance(v, float)) else '"' + ( v.strftime('%Y-%m-%d %H:%M:%S') if isinstance(v,datetime.datetime) else v) + '"' for v in row])
+                            wraped_values = "( " + values + " ), "
+                            entire_value += wraped_values
+                            #migratedRowCount += 1
+                            #print(f"INSERT INTO {table_name} VALUES ({values})")
+                        #print(entire_value[:-2])
+                        conn.execute(text(f"INSERT INTO {table_name} VALUES {entire_value[:-2]}"))
+                        conn.commit()
+                        #globalVariables.setMigratedRows(migratedRowCount)
+
+
+                # Commit the changes in the destination database
+                destination_session.commit()
+
+                with destination_engine.connect() as con:
+                    r = con.execute(text(f"SELECT * from {table_name}"))
+                    print(r.mappings().all())
+                    con.execute(text("SET FOREIGN_KEY_CHECKS=1"))
+                    con.commit()
+
+                # Close the sessions
+                source_session.close()
+                destination_session.close()
+                return make_response("OK", 200)
+            else:
+                return make_response("Invalid request.", 400)
+        else:
+            return make_response("Database credentials incorrect.", 511)
+    except Exception as error:
+            # handle the exception
+        print("An exception occurred:", error)
+        return make_response(str(error), 500)
+ 
 @migrate_blueprint.route('/api/migrate_all', methods=['GET'])
 def migrate_all():
     try:
@@ -36,7 +108,7 @@ def migrate_all():
 
             source_metadata = MetaData()
             source_metadata.reflect(source_engine)
-            
+
             with destination_engine.connect() as con:
                 con.execute(text("SET FOREIGN_KEY_CHECKS=0"))
                 con.commit()
@@ -99,5 +171,5 @@ def migrate_all():
               
     except Exception as error:
     # handle the exception
-        print("An exception occurred:", error) 
-        return make_response("Not ok", 500)
+        print("An exception occurred:", error)
+        return make_response(str(error), 500)
