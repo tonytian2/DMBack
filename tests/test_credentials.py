@@ -21,6 +21,20 @@ class CredentialsTestCase(unittest.TestCase):
             cls.server_process.terminate()
             cls.server_process.wait()
 
+    def test_missing_field(self):
+        data = {
+            'local_username': "test_username",
+            'local_password': "test_password",
+            #'local_url': "test_url",
+            'cloud_username': "test_username",
+            'cloud_password': "test_password",
+            'cloud_url': "test_url"
+        }
+        response = requests.post(self.base_url + '/v1/credentials',data=data)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.text, "Missing required field: local_url")
+        print('Test case: missing field PASSED')
+
     def test_wrong_local_credentials(self):
         data = {
             'local_username': config['MY_LOCAL_DB_USERNAME'],
