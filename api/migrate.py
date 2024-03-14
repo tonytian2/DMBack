@@ -6,7 +6,7 @@ import decimal, datetime
 import logging
 NoneType = type(None)
 
-logging.basicConfig(filename='progress.log', filemode='w', format='%(message)s')
+logging.basicConfig(filename='progress.log', filemode='w', format='%(message)s',level = logging.INFO)
 class GlobalVariables():
     def __init__(self):
         self.migratedRows = 0
@@ -110,8 +110,8 @@ def migrate_all():
         return make_response("No connection defined in current session, define session credentials first", 428)
     
     session_id = session['session_id']
-    localDbConnection = localDbConnectionDict['session_id']
-    cloudDbConnection = cloudDbConnectionDict['session_id']
+    localDbConnection = localDbConnectionDict[session_id]
+    cloudDbConnection = cloudDbConnectionDict[session_id]
     try:
         if(localDbConnection.isValid and cloudDbConnection.isValid):
             source_engine = localDbConnection.get_engine()
@@ -162,7 +162,7 @@ def migrate_all():
                     conn.execute(text(f"INSERT INTO {table_name} VALUES {entire_value[:-2]}"))
                     conn.commit()
                     globalVariables.setMigratedRows(migratedRowCount)
-                logging.info(table_name)    
+                logging.info("finishedTable:"+table_name)    
                 
 
             # Commit the changes in the destination database
