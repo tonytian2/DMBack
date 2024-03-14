@@ -2,7 +2,6 @@ from flask import Blueprint, make_response, request, session, jsonify
 from sqlalchemy import create_engine
 import secrets
 import os
-import shutil
 
 class DbConnection(object):
     """
