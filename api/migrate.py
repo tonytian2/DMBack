@@ -144,7 +144,13 @@ def migrate_all():
     try:
         if localDbConnection.isValid and cloudDbConnection.isValid:
             source_engine = localDbConnection.get_engine()
-            destination_engine = cloudDbConnection.get_engine() 
+            destination_engine = cloudDbConnection.get_engine()
+            
+            # duplicate the schema from local to cloud
+            meta = MetaData()
+            meta.reflect(source_engine)
+            meta.create_all(destination_engine)
+
             current_time = datetime.datetime.now().strftime("%Y-%m-%d_%H;%M;%S")
             logging.basicConfig(
                                 handlers=[
@@ -200,8 +206,8 @@ def migrate_all():
                                 )
                                 else '"'
                                 + (
-                                    v.strftime("%Y-%m-%d %H:%M:%S")
-                                    if isinstance(v, datetime.datetime)
+                                    v.strftime("%Y-%m-%d %H:%M:%S") if isinstance(v, datetime.datetime)
+                                    else v.strftime("%Y-%m-%d") if isinstance(v, datetime.date)
                                     else v
                                 )
                                 + '"'
