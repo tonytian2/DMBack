@@ -3,16 +3,20 @@ from sqlalchemy import MetaData, text
 from sqlalchemy.orm import sessionmaker
 from api.credentials import localDbConnectionDict
 
-schema_data_blueprint = Blueprint('schema_data', __name__)
+schema_data_blueprint = Blueprint("schema_data", __name__)
 
-@schema_data_blueprint.route('/api/get_schema_info', methods=['GET'])
+
+@schema_data_blueprint.route("/v1/metadata/source", methods=["GET"])
 def get_table_info():
-    if 'session_id' not in session:
-        return make_response("No connection defined in current session, define session credentials first", 428)
-    
-    session_id = session['session_id']
+    if "session_id" not in session:
+        return make_response(
+            "No connection defined in current session, define session credentials first",
+            401,
+        )
+
+    session_id = session["session_id"]
     localDbConnection = localDbConnectionDict[session_id]
-    if(localDbConnection.isValid):
+    if localDbConnection.isValid:
 
         source_engine = localDbConnection.get_engine()
         source_metadata = MetaData()
@@ -24,16 +28,20 @@ def get_table_info():
         for table_name in source_metadata.tables.keys():
 
             # Get row count
-            query = text("SELECT COUNT(*) FROM " + localDbConnection.url.split('/')[-1] + "." + table_name)
+            query = text(
+                "SELECT COUNT(*) FROM "
+                + localDbConnection.url.split("/")[-1]
+                + "."
+                + table_name
+            )
             rowCount = source_session.execute(query).scalar()
-            
+
             # Get column names
             column_names = source_metadata.tables[table_name].columns.keys()
-            
-            columnNames[table_name] = {'rows':rowCount,'columns':column_names}
-        
+
+            columnNames[table_name] = {"rows": rowCount, "columns": column_names}
+
         json_response = jsonify(columnNames)
         source_session.close()
-        return make_response(json_response,200)
-    return make_response("No connection to local database", 511)
-    
+        return make_response(json_response, 200)
+    return make_response("No connection to local database", 500)
