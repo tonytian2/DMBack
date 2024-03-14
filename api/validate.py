@@ -54,18 +54,18 @@ def updateCompletedRowCount(table_name):
 
 
 # this one is for the progress bar
-@validate_blueprint.route("/api/getValidateCompleteness", methods=["GET"])
+@validate_blueprint.route("/v1/validation/completeness", methods=["GET"])
 def getValidateCompleteness():
     if "session_id" not in session:
         return make_response(
             "No connection defined in current session, define session credentials first",
-            428,
+            401,
         )
 
     session_id = session["session_id"]
     localDbConnection = localDbConnectionDict[session_id]
     if localDbConnection.isValid:
-        source_engine = create_engine(localDbConnection.connection_string())
+        source_engine = localDbConnection.get_engine()
         source_metadata = MetaData()
         source_metadata.reflect(source_engine)
         Session = sessionmaker(bind=source_engine)
@@ -74,7 +74,7 @@ def getValidateCompleteness():
         total_row_count = 0
 
         for table_name in source_metadata.tables.keys():
-            # Get row count
+            # Get source row count
             query = text(
                 "SELECT COUNT(*) FROM "
                 + localDbConnection.url.split("/")[-1]
@@ -85,6 +85,7 @@ def getValidateCompleteness():
 
             total_row_count += row_count
 
+        # compare to cloud row count
         completed_row_count = globalVariables.getMigratedRows()
         completeness = (
             0 if total_row_count == 0 else completed_row_count / total_row_count
@@ -100,18 +101,16 @@ def getValidateCompleteness():
         source_session.close()
         return make_response(json_response, 200)
 
-    return make_response("Local connection not valid", 511)
+    return make_response("Local connection not valid", 500)
 
 
 # this one is for checking the completeness for a specific table
-@validate_blueprint.route(
-    "/api/getValidateCompletenessbyTable/<tableName>", methods=["GET"]
-)
+@validate_blueprint.route("/v1/validate/completeness/<tableName>", methods=["GET"])
 def getValidateCompletenessbyTable(tableName):
     if "session_id" not in session:
         return make_response(
             "No connection defined in current session, define session credentials first",
-            428,
+            401,
         )
 
     session_id = session["session_id"]
@@ -151,14 +150,12 @@ def getValidateCompletenessbyTable(tableName):
                 500,
             )
 
-    return make_response("Local or cloud connection not valid", 511)
+    return make_response("Local or cloud connection not valid", 500)
 
 
 # for validating accuracy
 # get cloud connection from both local and cloud, compare each table
-@validate_blueprint.route(
-    "/api/getValidationAccuracy/<tableName>/<percentage>", methods=["GET"]
-)
+@validate_blueprint.route("/api/getValidationAccuracy/<tableName>/<percentage>", methods=["GET"])
 def getValidationAccuracy(tableName, percentage):
     if "session_id" not in session:
         return make_response(
