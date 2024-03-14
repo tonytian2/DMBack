@@ -6,7 +6,7 @@ import decimal, datetime
 import logging
 NoneType = type(None)
 
-logging.basicConfig(filename='progress.log', filemode='w', format='%(message)s',level = logging.INFO)
+
 class GlobalVariables():
     def __init__(self):
         self.migratedRows = 0
@@ -144,8 +144,16 @@ def migrate_all():
     try:
         if localDbConnection.isValid and cloudDbConnection.isValid:
             source_engine = localDbConnection.get_engine()
-            destination_engine = cloudDbConnection.get_engine()
-
+            destination_engine = cloudDbConnection.get_engine() 
+            current_time = datetime.datetime.now().strftime("%Y-%m-%d_%H;%M;%S")
+            logging.basicConfig(
+                                handlers=[
+                                    logging.FileHandler(f"{current_time}.log", "w"),
+                                    logging.StreamHandler()
+                                    ],
+                                format='%(message)s',level = logging.INFO)
+            start_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            print(f"Migration started at {start_time}")
             source_metadata = MetaData()
             source_metadata.reflect(source_engine)
 
@@ -209,8 +217,8 @@ def migrate_all():
                         text(f"INSERT INTO {table_name} VALUES {entire_value[:-2]}")
                     )
                     conn.commit()
-                    globalVariables.setMigratedRows(migratedRowCount)
-                logging.info("finishedTable:"+table_name)    
+                globalVariables.setMigratedRows(migratedRowCount)
+                logging.info("Finished Table:"+table_name)    
                 
 
             # Commit the changes in the destination database
@@ -223,6 +231,9 @@ def migrate_all():
             # Close the sessions
             source_session.close()
             destination_session.close()
+            end_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            print(f"Migration ended at {end_time}")
+            logging.shutdown()
             return make_response("OK", 200)
         else:
             return make_response("Database credentials incorrect.", 500)

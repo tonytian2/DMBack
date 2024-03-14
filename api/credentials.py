@@ -1,7 +1,8 @@
 from flask import Blueprint, make_response, request, session, jsonify
 from sqlalchemy import create_engine
 import secrets
-
+import os
+import shutil
 
 class DbConnection(object):
     """
@@ -129,6 +130,7 @@ def set_local_credentials():
 @credentials_blueprint.route("/v1/session", methods=["DELETE"])
 def reset():
     clear_session()
+    delete_log()
     return make_response("OK", 200)
 
 
@@ -138,3 +140,13 @@ def clear_session():
         del localDbConnectionDict[session_id]
         del cloudDbConnectionDict[session_id]
         session.clear()
+        
+        
+        
+def delete_log():
+    files = [f for f in os.listdir()]
+    
+    for file in files:
+        if "log" in file:
+            os.remove(file)
+    
