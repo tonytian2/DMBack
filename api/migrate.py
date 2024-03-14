@@ -204,13 +204,12 @@ def migrate_all():
                                     or isinstance(v, decimal.Decimal)
                                     or isinstance(v, float)
                                 )
-                                else '"'
-                                + (
-                                    v.strftime("%Y-%m-%d %H:%M:%S") if isinstance(v, datetime.datetime)
-                                    else v.strftime("%Y-%m-%d") if isinstance(v, datetime.date)
-                                    else v
+                                else (
+                                    '"' + v.strftime("%Y-%m-%d %H:%M:%S") + '"' if isinstance(v, datetime.datetime)
+                                    else '"' + v.strftime("%Y-%m-%d") + '"' if isinstance(v, datetime.date)
+                                    else "'" + v + "'" if '"' in v
+                                    else '"' + v + '"'
                                 )
-                                + '"'
                                 for v in row
                             ]
                         )
