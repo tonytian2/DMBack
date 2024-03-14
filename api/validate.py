@@ -105,7 +105,7 @@ def getValidateCompleteness():
 
 
 # this one is for checking the completeness for a specific table
-@validate_blueprint.route("/v1/validate/completeness/<tableName>", methods=["GET"])
+@validate_blueprint.route("/v1/validation/completeness/<tableName>", methods=["GET"])
 def getValidateCompletenessbyTable(tableName):
     if "session_id" not in session:
         return make_response(
