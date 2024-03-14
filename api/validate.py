@@ -155,12 +155,12 @@ def getValidateCompletenessbyTable(tableName):
 
 # for validating accuracy
 # get cloud connection from both local and cloud, compare each table
-@validate_blueprint.route("/api/getValidationAccuracy/<tableName>/<percentage>", methods=["GET"])
+@validate_blueprint.route("/v1/validation/accuracy/<tableName>/<percentage>", methods=["GET"])
 def getValidationAccuracy(tableName, percentage):
     if "session_id" not in session:
         return make_response(
             "No connection defined in current session, define session credentials first",
-            428,
+            401,
         )
 
     session_id = session["session_id"]
