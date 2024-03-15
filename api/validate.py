@@ -222,8 +222,8 @@ def get_validation_accuracy_tables(percentage):
                     accuracy = get_accuracy_for_table(table_name, percentage, source_metadata, source_session, cloud_engine)
                     output[table_name] = {"accuracy": accuracy}
                 except Exception as e:
-                    error_message = f"Error retrieving data: {str(e)}"
-                    output[table_name] = {"error": error_message,"accuracy": 0}
+                    error_message = str(e)
+                    output[table_name] = {"error": error_message}
             
             source_session.close()
             return make_response(jsonify(output), 200)
@@ -234,6 +234,8 @@ def get_validation_accuracy_tables(percentage):
         
 
 def get_accuracy_for_table(tableName, percentage, source_metadata, source_session, cloud_engine):
+    if tableName not in source_metadata.tables:
+        raise ValueError(f"Table does not exist in local database.")
     source_table = source_metadata.tables[tableName]
 
     # Query the local database
