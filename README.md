@@ -31,11 +31,27 @@ py -3 -m venv .venv
 ### Install dependencies
 
 ```bash
-pip install Flask
+pip install flask
 pip install sqlalchemy
 pip install pymysql
+pip install mysql-connector-python
+
+# if testing
+pip install python-dotenv
 ```
-## Run Locally
+
+### Create environment file (only required for testing)
+Create a file called `.env` in the root directory. It should contain the following data:
+```json
+MY_LOCAL_DB_URL=your_local_db_url
+MY_LOCAL_DB_USERNAME=your_local_db_username
+MY_LOCAL_DB_PASSWORD=your_local_db_password
+MY_CLOUD_DB_URL=your_cloud_db_url
+MY_CLOUD_DB_USERNAME=your_cloud_db_username
+MY_CLOUD_DB_PASSWORD=your_cloud_db_password
+```
+
+## Run Server Locally
 
 Start the server using the following command:
 ```bash
@@ -44,3 +60,10 @@ flask --app main run --debug
 Make requests to `localhost:5000`
 
 the `--debug` flag means the server will auto-reload when a change is detected.
+
+## Testing
+Run tests using the following command:
+```bash
+python .\tests\{test_filename.py}
+```
+The test file will automatically start and terminate the server.

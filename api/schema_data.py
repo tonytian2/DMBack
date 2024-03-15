@@ -2,7 +2,7 @@ from flask import Blueprint, session, make_response, jsonify
 from sqlalchemy import MetaData, text
 from sqlalchemy.orm import sessionmaker
 from api.credentials import localDbConnectionDict
-
+import os
 schema_data_blueprint = Blueprint("schema_data", __name__)
 
 
@@ -40,8 +40,33 @@ def get_table_info():
             column_names = source_metadata.tables[table_name].columns.keys()
 
             columnNames[table_name] = {"rows": rowCount, "columns": column_names}
-
-        json_response = jsonify(columnNames)
+        respone = {"metadata": columnNames, "recovered": load_log() }
+        json_response = jsonify(respone)
         source_session.close()
         return make_response(json_response, 200)
     return make_response("No connection to local database", 500)
+
+
+
+def load_log():
+    
+    files = [f for f in os.listdir()]
+    
+
+    for file in files:
+        if "log" in file:
+            r = {
+                "timestamp": file.split(".")[0].replace(";",":").replace("_"," "),
+                "finishedTables":[]
+            }
+            with open(file, "r") as f:
+                Lines = f.readlines()
+                for line in Lines:
+                    if "Finished Table:" in line:
+                        r["finishedTables"].append(line.strip().split(":",1)[1])
+                    
+                return r
+            
+    return {}
+                
+            
