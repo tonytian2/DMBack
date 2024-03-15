@@ -227,7 +227,7 @@ def migrate_all():
             end_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             print(f"Migration ended at {end_time}")
             logging.shutdown()
-            return make_response(jsonify(globalVariables.getMigratedRows), 200)
+            return make_response(jsonify(globalVariables.getMigratedRows()), 200)
         else:
             return make_response("Database credentials incorrect.", 500)
 
