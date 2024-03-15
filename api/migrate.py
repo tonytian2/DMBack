@@ -64,42 +64,47 @@ def migrate_tables():
                 Session = sessionmaker(bind=destination_engine)
                 destination_session = Session()
 
+                output = {}
                 # Iterate over tables in the source database
                 for i in range(len(table_names)):
                     table_name = table_names[i]
-                    source_table = source_metadata.tables[table_name]
-                    rows = source_session.query(source_table).all()
-                    with destination_engine.connect() as conn:
-                        conn.execute(text(f"truncate {table_name};"))
-                        entire_value = ""
-                        migratedRowCount = 0
-                        for row in rows:
-                            values = ", ".join(
-                                [
-                                    (str(v) if not isinstance(v, NoneType) else "NULL")
-                                    if (
-                                        isinstance(v, int)
-                                        or isinstance(v, NoneType)
-                                        or isinstance(v, decimal.Decimal)
-                                        or isinstance(v, float)
-                                    )
-                                    else (
-                                    '"' + v.strftime("%Y-%m-%d %H:%M:%S") + '"' if isinstance(v, datetime.datetime)
-                                    else '"' + v.strftime("%Y-%m-%d") + '"' if isinstance(v, datetime.date)
-                                    else "'" + v + "'" if '"' in v
-                                    else '"' + v + '"'
-                                    )
-                                    for v in row
-                                ]
+                    if table_name in source_metadata.tables:
+                        source_table = source_metadata.tables[table_name]
+                        rows = source_session.query(source_table).all()
+                        with destination_engine.connect() as conn:
+                            conn.execute(text(f"truncate {table_name};"))
+                            entire_value = ""
+                            migratedRowCount = 0
+                            for row in rows:
+                                values = ", ".join(
+                                    [
+                                        (str(v) if not isinstance(v, NoneType) else "NULL")
+                                        if (
+                                            isinstance(v, int)
+                                            or isinstance(v, NoneType)
+                                            or isinstance(v, decimal.Decimal)
+                                            or isinstance(v, float)
+                                        )
+                                        else (
+                                        '"' + v.strftime("%Y-%m-%d %H:%M:%S") + '"' if isinstance(v, datetime.datetime)
+                                        else '"' + v.strftime("%Y-%m-%d") + '"' if isinstance(v, datetime.date)
+                                        else "'" + v + "'" if '"' in v
+                                        else '"' + v + '"'
+                                        )
+                                        for v in row
+                                    ]
+                                )
+                                wraped_values = "( " + values + " ), "
+                                entire_value += wraped_values
+                                migratedRowCount += 1
+                            conn.execute(
+                                text(f"INSERT INTO {table_name} VALUES {entire_value[:-2]}")
                             )
-                            wraped_values = "( " + values + " ), "
-                            entire_value += wraped_values
-                            migratedRowCount += 1
-                        conn.execute(
-                            text(f"INSERT INTO {table_name} VALUES {entire_value[:-2]}")
-                        )
-                        conn.commit()
-                        globalVariables.setMigratedRows(table_name, migratedRowCount)
+                            conn.commit()
+                            globalVariables.setMigratedRows(table_name, migratedRowCount)
+                            output[table_name] = migratedRowCount
+                    else:
+                        output[table_name] = "Table does not exist in local database"
 
                 # Commit the changes in the destination database
                 destination_session.commit()
@@ -111,7 +116,7 @@ def migrate_tables():
                 # Close the sessions
                 source_session.close()
                 destination_session.close()
-                return make_response(jsonify(globalVariables.getMigratedRows()), 200)
+                return make_response(jsonify(output), 200)
             else:
                 return make_response("Invalid request.", 400)
         else:
@@ -167,7 +172,6 @@ def migrate_all():
             Session = sessionmaker(bind=destination_engine)
             destination_session = Session()
 
-            output = {}
             # Iterate over tables in the source database
             for i in range(len(source_metadata.tables.keys())):
                 table_name = list(source_metadata.tables.keys())[i]
@@ -207,7 +211,6 @@ def migrate_all():
                     )
                     conn.commit()
                 globalVariables.setMigratedRows(table_name, migratedRowCount)
-                output[table_name] = migratedRowCount
                 logging.info("Finished Table:"+table_name)
                 
 
@@ -224,7 +227,7 @@ def migrate_all():
             end_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             print(f"Migration ended at {end_time}")
             logging.shutdown()
-            return make_response(jsonify(output), 200)
+            return make_response(jsonify(globalVariables.getMigratedRows), 200)
         else:
             return make_response("Database credentials incorrect.", 500)
 
