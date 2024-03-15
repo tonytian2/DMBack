@@ -8,49 +8,49 @@ import traceback
 validate_blueprint = Blueprint("validate", __name__)
 
 # the completed row count should be according to the cloud rows not the local
-@validate_blueprint.route("/api/updateCompletedRowCount/<table_name>", methods=["POST"])
-def updateCompletedRowCount(table_name):
-    if "session_id" not in session:
-        return make_response(
-            "No connection defined in current session, define session credentials first",
-            428,
-        )
+# @validate_blueprint.route("/api/updateCompletedRowCount/<table_name>", methods=["POST"])
+# def updateCompletedRowCount(table_name):
+#     if "session_id" not in session:
+#         return make_response(
+#             "No connection defined in current session, define session credentials first",
+#             428,
+#         )
 
-    session_id = session["session_id"]
-    cloudDbConnection = cloudDbConnectionDict[session_id]
-    completed_row_count = globalVariables.getMigratedRows()  # use this
+#     session_id = session["session_id"]
+#     cloudDbConnection = cloudDbConnectionDict[session_id]
+#     completed_row_count = globalVariables.getMigratedRows()  # use this
 
-    if cloudDbConnection.isValid:
-        source_engine = cloudDbConnection.get_engine()
-        source_metadata = MetaData()
-        source_metadata.reflect(source_engine)
-        Session = sessionmaker(bind=source_engine)
-        source_session = Session()
+#     if cloudDbConnection.isValid:
+#         source_engine = cloudDbConnection.get_engine()
+#         source_metadata = MetaData()
+#         source_metadata.reflect(source_engine)
+#         Session = sessionmaker(bind=source_engine)
+#         source_session = Session()
 
-        try:
-            # Check if the table exists
-            if table_name not in source_metadata.tables:
-                return make_response("Failed to locate the table", 404)
+#         try:
+#             # Check if the table exists
+#             if table_name not in source_metadata.tables:
+#                 return make_response("Failed to locate the table", 404)
 
-            # Get the row count for the specified table
-            with source_session.begin():
-                table = source_metadata.tables[table_name]
-                row_count = source_session.query(table).count()
-                # updated the completed row count
-                completed_row_count += row_count
+#             # Get the row count for the specified table
+#             with source_session.begin():
+#                 table = source_metadata.tables[table_name]
+#                 row_count = source_session.query(table).count()
+#                 # updated the completed row count
+#                 completed_row_count += row_count
 
-            # Return the row count as JSON response
-            return make_response(
-                jsonify(row_count=row_count, completed_row_count=completed_row_count),
-                200,
-            )
+#             # Return the row count as JSON response
+#             return make_response(
+#                 jsonify(row_count=row_count, completed_row_count=completed_row_count),
+#                 200,
+#             )
 
-        except Exception as e:
-            traceback.print_exc()
-            return make_response("Failed to connect to the cloud", 511)
+#         except Exception as e:
+#             traceback.print_exc()
+#             return make_response("Failed to connect to the cloud", 511)
 
-    else:
-        return make_response("Failed to connect to the cloud", 511)
+#     else:
+#         return make_response("Failed to connect to the cloud", 511)
 
 
 # this one is for the progress bar
@@ -103,7 +103,7 @@ def getValidateCompleteness():
     return make_response("Local connection not valid", 500)
 
 
-# this one is for checking the completeness for a specific table
+# validate completeness of specific tables
 @validate_blueprint.route("/v1/validation/completeness", methods=["POST"])
 def getValidateCompletenessbyTable():
     if "session_id" not in session:
@@ -129,9 +129,8 @@ def getValidateCompletenessbyTable():
                 tableName = table_names[i]
 
                 if tableName not in local_metadata.tables:
-                    return make_response(
-                        f"Table '{tableName}' does not exist in the local database.", 404
-                    )
+                    output[tableName] = {"error": "Table does not exist in the local database."}
+                    continue
 
                 Session = sessionmaker(bind=local_engine)
                 local_session = Session()
