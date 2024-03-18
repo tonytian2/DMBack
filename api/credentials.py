@@ -2,6 +2,7 @@ from flask import Blueprint, make_response, request, session, jsonify
 from sqlalchemy import create_engine
 import secrets
 import os
+import functools
 
 class DbConnection(object):
     """
@@ -148,4 +149,14 @@ def delete_log():
     for file in files:
         if "log" in file:
             os.remove(file)
-    
+
+def early_return_decorator(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        if "session_id" not in session:
+            return make_response(
+                "No connection defined in current session, define session credentials first",
+                401
+            )
+        return func(*args, **kwargs)
+    return wrapper

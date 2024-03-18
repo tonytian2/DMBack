@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, make_response, request, session
 from sqlalchemy import MetaData, text
 from sqlalchemy.orm import sessionmaker
-from api.credentials import localDbConnectionDict, cloudDbConnectionDict
+from api.credentials import localDbConnectionDict, cloudDbConnectionDict, early_return_decorator
 import decimal, datetime
 import logging
 NoneType = type(None)
@@ -32,12 +32,8 @@ migrate_blueprint = Blueprint("migrate", __name__)
 
 
 @migrate_blueprint.route("/v1/migrate_tables", methods=["POST"])
+@early_return_decorator
 def migrate_tables():
-    if "session_id" not in session:
-        return make_response(
-            "No connection defined in current session, define session credentials first",
-            401,
-        )
     session_id = session["session_id"]
     localDbConnection = localDbConnectionDict[session_id]
     cloudDbConnection = cloudDbConnectionDict[session_id]
@@ -128,13 +124,8 @@ def migrate_tables():
 
 
 @migrate_blueprint.route("/v1/migrate_all", methods=["GET"])
+@early_return_decorator
 def migrate_all():
-    if "session_id" not in session:
-        return make_response(
-            "No connection defined in current session, define session credentials first",
-            401,
-        )
-
     session_id = session["session_id"]
     localDbConnection = localDbConnectionDict[session_id]
     cloudDbConnection = cloudDbConnectionDict[session_id]
