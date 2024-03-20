@@ -1,9 +1,11 @@
 from flask import Blueprint, jsonify, make_response, request, session
 from sqlalchemy import MetaData, text
 from sqlalchemy.orm import sessionmaker
-from api.credentials import localDbConnectionDict, cloudDbConnectionDict, early_return_decorator
 import decimal, datetime
 import logging
+from api.credentials import localDbConnectionDict, cloudDbConnectionDict, early_return_decorator
+from util.snapshots import snapshot_database_tables, get_latest_snapshot_data
+
 NoneType = type(None)
 
 
@@ -124,8 +126,11 @@ def migrate_all():
             Session = sessionmaker(bind=destination_engine)
             destination_session = Session()
 
+            # Save a snapshot of the table data
+            snapshot_database_tables(source_metadata, source_session)
+
             # Run the migration over the table list
-            output = migrate_table_list(list(source_metadata.tables.keys()), source_metadata, source_session, destination_engine, True)
+            output = migrate_table_list(list(source_metadata.tables.keys()), source_metadata, destination_engine, True)
 
             # Commit the changes in the destination database
             destination_session.commit()
@@ -150,7 +155,7 @@ def migrate_all():
         return make_response(str(error), 500)
 
 
-def migrate_table_list(table_list, source_metadata, source_session, destination_engine, shouldLog = False):
+def migrate_table_list(table_list, source_metadata, destination_engine, shouldLog = False):
     output = {}
     for i in range(len(table_list)):
         table_name = table_list[i]
@@ -158,8 +163,7 @@ def migrate_table_list(table_list, source_metadata, source_session, destination_
             output[table_name] = "Table does not exist in local database."
             continue
 
-        source_table = source_metadata.tables[table_name]
-        rows = source_session.query(source_table).all()
+        rows = get_latest_snapshot_data(table_name)
         # Insert rows into the destination table
         with destination_engine.connect() as conn:
             conn.execute(text(f"truncate {table_name};"))
@@ -170,10 +174,7 @@ def migrate_table_list(table_list, source_metadata, source_session, destination_
                     [
                         (str(v) if not isinstance(v, NoneType) else "NULL")
                         if (
-                            isinstance(v, int)
-                            or isinstance(v, NoneType)
-                            or isinstance(v, decimal.Decimal)
-                            or isinstance(v, float)
+                            isinstance(v, (int, NoneType, decimal.Decimal, float))
                         )
                         else (
                             '"' + v.strftime("%Y-%m-%d %H:%M:%S") + '"' if isinstance(v, datetime.datetime)
