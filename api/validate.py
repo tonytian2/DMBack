@@ -3,155 +3,124 @@ from sqlalchemy import MetaData, text
 from sqlalchemy.orm import sessionmaker
 from api.credentials import localDbConnectionDict, cloudDbConnectionDict, early_return_decorator
 from api.migrate import globalVariables
-import traceback
+import csv
+import random
 
 validate_blueprint = Blueprint("validate", __name__)
 
-# the completed row count should be according to the cloud rows not the local
-# @validate_blueprint.route("/api/updateCompletedRowCount/<table_name>", methods=["POST"])
-# def updateCompletedRowCount(table_name):
-#     if "session_id" not in session:
-#         return make_response(
-#             "No connection defined in current session, define session credentials first",
-#             428,
-#         )
-
-#     session_id = session["session_id"]
-#     cloudDbConnection = cloudDbConnectionDict[session_id]
-#     completed_row_count = globalVariables.getMigratedRows()  # use this
-
-#     if cloudDbConnection.isValid:
-#         source_engine = cloudDbConnection.get_engine()
-#         source_metadata = MetaData()
-#         source_metadata.reflect(source_engine)
-#         Session = sessionmaker(bind=source_engine)
-#         source_session = Session()
-
-#         try:
-#             # Check if the table exists
-#             if table_name not in source_metadata.tables:
-#                 return make_response("Failed to locate the table", 404)
-
-#             # Get the row count for the specified table
-#             with source_session.begin():
-#                 table = source_metadata.tables[table_name]
-#                 row_count = source_session.query(table).count()
-#                 # updated the completed row count
-#                 completed_row_count += row_count
-
-#             # Return the row count as JSON response
-#             return make_response(
-#                 jsonify(row_count=row_count, completed_row_count=completed_row_count),
-#                 200,
-#             )
-
-#         except Exception as e:
-#             traceback.print_exc()
-#             return make_response("Failed to connect to the cloud", 511)
-
-#     else:
-#         return make_response("Failed to connect to the cloud", 511)
-
-
-# this one is for the progress bar
-@validate_blueprint.route("/v1/validation/completeness", methods=["GET"])
-@early_return_decorator
-def getValidateCompleteness():
-    session_id = session["session_id"]
-    localDbConnection = localDbConnectionDict[session_id]
-    if localDbConnection.isValid:
-        source_engine = localDbConnection.get_engine()
-        source_metadata = MetaData()
-        source_metadata.reflect(source_engine)
-        Session = sessionmaker(bind=source_engine)
-        source_session = Session()
-
-        total_row_count_dict = {}
-
-        for table_name in source_metadata.tables.keys():
-            # Get source row count
-            query = text(
-                "SELECT COUNT(*) FROM "
-                + localDbConnection.url.split("/")[-1]
-                + "."
-                + table_name
-            )
-            row_count = source_session.execute(query).scalar()
-
-            total_row_count_dict[table_name] = row_count
-
-        # compare to cloud row count
-        completed_row_count_dict = globalVariables.getMigratedRows()
-
-        output = {}
-        for key,value in total_row_count_dict.items():
-            output[key] = {
-                "source_row_count": value,
-                "destination_row_count": completed_row_count_dict.get(key, 0),
-                "completeness": 0 if value == 0 else completed_row_count_dict.get(key,0) / value
-            }
-
-        json_response = jsonify(output)
-        source_session.close()
-        return make_response(json_response, 200)
-
-    return make_response("Local connection not valid", 500)
-
-
-# validate completeness of specific tables
+# validate the completness of the csv and also the cloud, should pass the table name and also the url for the csv file in postman 
 @validate_blueprint.route("/v1/validation/completeness", methods=["POST"])
 @early_return_decorator
 def getValidateCompletenessbyTable():
 
     session_id = session["session_id"]
     data = request.get_json()
-    if "tables" in data and isinstance(data["tables"], list):
-        table_names = data["tables"]
-        localDbConnection = localDbConnectionDict[session_id]
-        cloudDbConnection = cloudDbConnectionDict[session_id]
-        if localDbConnection.isValid and cloudDbConnection.isValid:
-            local_engine = localDbConnection.get_engine()
-            cloud_engine = cloudDbConnection.get_engine()
+    if "table" in data and isinstance(data["table"], str):      # assume only a table in the csv file 
+        table_name = data["table"]
+        local_csv_path = data.get("csv_file")
+        cloud_db_connection = cloudDbConnectionDict[session_id]()
 
-            local_metadata = MetaData()
-            local_metadata.reflect(local_engine)
-            
-            output = {}
-            for i in range(len(table_names)):
-                tableName = table_names[i]
+        if local_csv_path and cloud_db_connection.isValid:
+            cloud_engine = cloud_db_connection.get_engine()
 
-                if tableName not in local_metadata.tables:
-                    output[tableName] = {"error": "Table does not exist in the local database."}
-                    continue
+            Session = sessionmaker(bind=cloud_engine)
+            cloud_session = Session()
 
-                Session = sessionmaker(bind=local_engine)
-                local_session = Session()
-                cloud_session = Session(bind=cloud_engine)
+            # Read row count from the CSV file
+            with open(local_csv_path, 'r') as csvfile:
+                csv_reader = csv.reader(csvfile)
+                header = next(csv_reader)  # Skip the header row
+                row = next(csv_reader)  # Read the first row
+                csv_table_name = row[0]
+                row_count = int(row[1])
 
-                local_table = local_metadata.tables[tableName]
+            if csv_table_name != table_name:
+                return make_response("Table name in the CSV file does not match the requested table.", 400)
 
-                # Get row count for the specified table in the local database
-                local_row_count = local_session.query(local_table).count()
+            # Get destination row count from the cloud database
+            cloud_row_count = cloud_session.execute(f"SELECT COUNT(*) FROM {table_name}").scalar()
 
-                # Get row count for the specified table in the cloud database
-                cloud_row_count = cloud_session.query(local_table).count()
-                data = {}
-                data["source_row_count"] = local_row_count
-                data["destination_row_count"] = cloud_row_count
-                data["completeness"] = 0 if local_row_count == 0 else cloud_row_count / local_row_count
-                output[tableName] = data
+            data = {
+                "source_row_count": row_count,
+                "destination_row_count": cloud_row_count,
+                "completeness": 0 if row_count == 0 else cloud_row_count / row_count
+            }
 
-            return make_response(jsonify(output), 200 if local_row_count == cloud_row_count else 500)
+            return make_response(jsonify(data), 200)
 
-        return make_response("Local or cloud connection not valid", 500)
+        return make_response("CSV file or cloud connection not valid", 500)
+    else:
+        return make_response("Invalid request.", 400)
+    
+
+@validate_blueprint.route("/v1/validation/accuracy/<float:accuracy>", methods=["POST"])
+@early_return_decorator
+def getValidateAccuracy(accuracy):
+
+    session_id = session["session_id"]
+    data = request.get_json()
+    if "table" in data and isinstance(data["table"], str):
+        table_name = data["table"]
+        local_csv_path = data.get("csv_file")
+        cloud_db_connection = cloudDbConnectionDict[session_id]()
+
+        if local_csv_path and cloud_db_connection.isValid:
+            cloud_engine = cloud_db_connection.get_engine()
+
+            Session = sessionmaker(bind=cloud_engine)
+            cloud_session = Session()
+
+            # Read the local CSV file
+            with open(local_csv_path, 'r') as csvfile:
+                csv_reader = csv.reader(csvfile)
+                header = next(csv_reader)  # Skip the header row
+                rows = list(csv_reader)  # Read all remaining rows
+
+            # Calculate the number of rows to compare based on accuracy
+            num_rows_to_compare = int(len(rows) * accuracy)
+            num_rows_to_compare = min(num_rows_to_compare, len(rows))  # Ensure it does not exceed the total number of rows
+
+            # Randomly select rows to compare
+            random_rows = random.sample(rows, num_rows_to_compare)
+
+            accuracy_results = []
+
+            for row in random_rows:
+                csv_row = row[1:]  # Exclude the first column (table_name) in the CSV row
+                csv_row = [int(value) for value in csv_row]  # Convert values to integers if needed
+
+                # Query the cloud database for the same row
+                cloud_row = cloud_session.execute(f"SELECT * FROM {table_name} WHERE id = {csv_row[0]}").fetchone()
+
+                if cloud_row:
+                    cloud_row_values = list(cloud_row[1:])  # Exclude the first column (id) in the cloud row
+                    cloud_row_values = [int(value) for value in cloud_row_values]  # Convert values to integers if needed
+
+                    # Compare the values
+                    row_accuracy = sum(1 for csv_value, cloud_value in zip(csv_row, cloud_row_values) if csv_value == cloud_value) / len(csv_row)
+                    accuracy_results.append(row_accuracy)
+
+            # Calculate the overall accuracy
+            overall_accuracy = sum(accuracy_results) / len(accuracy_results) if accuracy_results else 0
+
+            data = {
+                "num_rows_to_compare": num_rows_to_compare,
+                "overall_accuracy": overall_accuracy,
+                "row_accuracy": accuracy_results
+            }
+
+            cloud_session.close()
+
+            return make_response(jsonify(data), 200)
+
+        return make_response("CSV file or cloud connection not valid", 500)
     else:
         return make_response("Invalid request.", 400)
 
-
-# validate accuracy of all tables
-@validate_blueprint.route("/v1/validation/accuracy/<percentage>", methods=["GET"])
+# compare the local and the cloud database 
+@validate_blueprint.route("/v1/validateLocalAndCloud", methods=["POST"])
 @early_return_decorator
-def getValidationAccuracyAll(percentage):
+def validateLocalAndCloud():
     session_id = session["session_id"]
     localDbConnection = localDbConnectionDict[session_id]
     cloudDbConnection = cloudDbConnectionDict[session_id]
@@ -168,7 +137,7 @@ def getValidationAccuracyAll(percentage):
         for i in range(len(source_metadata.tables.keys())):
             table_name = list(source_metadata.tables.keys())[i]
             try:
-                accuracy = get_accuracy_for_table(table_name, percentage, source_metadata, source_session, cloud_engine)
+                accuracy = get_accuracy_for_table(table_name, 1, source_metadata, source_session, cloud_engine)
                 output[table_name] = {"accuracy": accuracy}
             except Exception as e:
                 error_message = f"Error retrieving data: {str(e)}"
@@ -178,44 +147,6 @@ def getValidationAccuracyAll(percentage):
         return make_response(jsonify(output), 200)
     else:
         return make_response("Database credentials incorrect.", 500)
-
-
-# validate accuracy of specific tables
-@validate_blueprint.route("/v1/validation/accuracy/<percentage>", methods=["POST"])
-@early_return_decorator
-def get_validation_accuracy_tables(percentage):
-    session_id = session["session_id"]
-    localDbConnection = localDbConnectionDict[session_id]
-    cloudDbConnection = cloudDbConnectionDict[session_id]
-    if localDbConnection.isValid and cloudDbConnection.isValid:
-        data = request.get_json()
-        if "tables" in data and isinstance(data["tables"], list):
-            table_names = data["tables"]
-            source_engine = localDbConnection.get_engine()
-            cloud_engine = cloudDbConnection.get_engine()
-
-            source_metadata = MetaData()
-            source_metadata.reflect(source_engine)
-            Session = sessionmaker(bind=source_engine)
-            source_session = Session()
-
-            output = {}
-            for i in range(len(table_names)):
-                table_name = table_names[i]
-                try:
-                    accuracy = get_accuracy_for_table(table_name, percentage, source_metadata, source_session, cloud_engine)
-                    output[table_name] = {"accuracy": accuracy}
-                except Exception as e:
-                    error_message = str(e)
-                    output[table_name] = {"error": error_message}
-            
-            source_session.close()
-            return make_response(jsonify(output), 200)
-        else:
-            return make_response("Invalid request.", 400)
-    else:
-        return make_response("Database credentials incorrect.", 500)
-        
 
 def get_accuracy_for_table(tableName, percentage, source_metadata, source_session, cloud_engine):
     if tableName not in source_metadata.tables:
