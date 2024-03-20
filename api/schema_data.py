@@ -1,19 +1,14 @@
 from flask import Blueprint, session, make_response, jsonify
 from sqlalchemy import MetaData, text
 from sqlalchemy.orm import sessionmaker
-from api.credentials import localDbConnectionDict
+from api.credentials import localDbConnectionDict, early_return_decorator
 import os
 schema_data_blueprint = Blueprint("schema_data", __name__)
 
 
 @schema_data_blueprint.route("/v1/metadata/source", methods=["GET"])
+@early_return_decorator
 def get_table_info():
-    if "session_id" not in session:
-        return make_response(
-            "No connection defined in current session, define session credentials first",
-            401,
-        )
-
     session_id = session["session_id"]
     localDbConnection = localDbConnectionDict[session_id]
     if localDbConnection.isValid:

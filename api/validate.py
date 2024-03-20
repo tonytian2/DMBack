@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, make_response, session, request
 from sqlalchemy import MetaData, text
 from sqlalchemy.orm import sessionmaker
-from api.credentials import localDbConnectionDict, cloudDbConnectionDict
+from api.credentials import localDbConnectionDict, cloudDbConnectionDict, early_return_decorator
 from api.migrate import globalVariables
 import traceback
 
@@ -55,13 +55,8 @@ validate_blueprint = Blueprint("validate", __name__)
 
 # this one is for the progress bar
 @validate_blueprint.route("/v1/validation/completeness", methods=["GET"])
+@early_return_decorator
 def getValidateCompleteness():
-    if "session_id" not in session:
-        return make_response(
-            "No connection defined in current session, define session credentials first",
-            401,
-        )
-
     session_id = session["session_id"]
     localDbConnection = localDbConnectionDict[session_id]
     if localDbConnection.isValid:
@@ -105,12 +100,9 @@ def getValidateCompleteness():
 
 # validate completeness of specific tables
 @validate_blueprint.route("/v1/validation/completeness", methods=["POST"])
+@early_return_decorator
 def getValidateCompletenessbyTable():
-    if "session_id" not in session:
-        return make_response(
-            "No connection defined in current session, define session credentials first",
-            401,
-        )
+
     session_id = session["session_id"]
     data = request.get_json()
     if "tables" in data and isinstance(data["tables"], list):
@@ -158,12 +150,8 @@ def getValidateCompletenessbyTable():
 
 # validate accuracy of all tables
 @validate_blueprint.route("/v1/validation/accuracy/<percentage>", methods=["GET"])
+@early_return_decorator
 def getValidationAccuracyAll(percentage):
-    if "session_id" not in session:
-        return make_response(
-            "No connection defined in current session, define session credentials first",
-            401
-        )
     session_id = session["session_id"]
     localDbConnection = localDbConnectionDict[session_id]
     cloudDbConnection = cloudDbConnectionDict[session_id]
@@ -194,12 +182,8 @@ def getValidationAccuracyAll(percentage):
 
 # validate accuracy of specific tables
 @validate_blueprint.route("/v1/validation/accuracy/<percentage>", methods=["POST"])
+@early_return_decorator
 def get_validation_accuracy_tables(percentage):
-    if "session_id" not in session:
-        return make_response(
-            "No connection defined in current session, define session credentials first",
-            401
-        )
     session_id = session["session_id"]
     localDbConnection = localDbConnectionDict[session_id]
     cloudDbConnection = cloudDbConnectionDict[session_id]

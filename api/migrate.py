@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, make_response, request, session
 from sqlalchemy import MetaData, text
 from sqlalchemy.orm import sessionmaker
-from api.credentials import localDbConnectionDict, cloudDbConnectionDict
+from api.credentials import localDbConnectionDict, cloudDbConnectionDict, early_return_decorator
 import decimal, datetime
 import logging
 NoneType = type(None)
@@ -32,12 +32,8 @@ migrate_blueprint = Blueprint("migrate", __name__)
 
 
 @migrate_blueprint.route("/v1/migrate_tables", methods=["POST"])
+@early_return_decorator
 def migrate_tables():
-    if "session_id" not in session:
-        return make_response(
-            "No connection defined in current session, define session credentials first",
-            401,
-        )
     session_id = session["session_id"]
     localDbConnection = localDbConnectionDict[session_id]
     cloudDbConnection = cloudDbConnectionDict[session_id]
@@ -64,47 +60,8 @@ def migrate_tables():
                 Session = sessionmaker(bind=destination_engine)
                 destination_session = Session()
 
-                output = {}
-                # Iterate over tables in the source database
-                for i in range(len(table_names)):
-                    table_name = table_names[i]
-                    if table_name in source_metadata.tables:
-                        source_table = source_metadata.tables[table_name]
-                        rows = source_session.query(source_table).all()
-                        with destination_engine.connect() as conn:
-                            conn.execute(text(f"truncate {table_name};"))
-                            entire_value = ""
-                            migratedRowCount = 0
-                            for row in rows:
-                                values = ", ".join(
-                                    [
-                                        (str(v) if not isinstance(v, NoneType) else "NULL")
-                                        if (
-                                            isinstance(v, int)
-                                            or isinstance(v, NoneType)
-                                            or isinstance(v, decimal.Decimal)
-                                            or isinstance(v, float)
-                                        )
-                                        else (
-                                        '"' + v.strftime("%Y-%m-%d %H:%M:%S") + '"' if isinstance(v, datetime.datetime)
-                                        else '"' + v.strftime("%Y-%m-%d") + '"' if isinstance(v, datetime.date)
-                                        else "'" + v + "'" if '"' in v
-                                        else '"' + v + '"'
-                                        )
-                                        for v in row
-                                    ]
-                                )
-                                wraped_values = "( " + values + " ), "
-                                entire_value += wraped_values
-                                migratedRowCount += 1
-                            conn.execute(
-                                text(f"INSERT INTO {table_name} VALUES {entire_value[:-2]}")
-                            )
-                            conn.commit()
-                            globalVariables.setMigratedRows(table_name, migratedRowCount)
-                            output[table_name] = migratedRowCount
-                    else:
-                        output[table_name] = "Table does not exist in local database"
+                # Run the migration over the table list
+                output = migrate_table_list(table_names, source_metadata, source_session, destination_engine)
 
                 # Commit the changes in the destination database
                 destination_session.commit()
@@ -128,13 +85,8 @@ def migrate_tables():
 
 
 @migrate_blueprint.route("/v1/migrate_all", methods=["GET"])
+@early_return_decorator
 def migrate_all():
-    if "session_id" not in session:
-        return make_response(
-            "No connection defined in current session, define session credentials first",
-            401,
-        )
-
     session_id = session["session_id"]
     localDbConnection = localDbConnectionDict[session_id]
     cloudDbConnection = cloudDbConnectionDict[session_id]
@@ -172,47 +124,8 @@ def migrate_all():
             Session = sessionmaker(bind=destination_engine)
             destination_session = Session()
 
-            # Iterate over tables in the source database
-            for i in range(len(source_metadata.tables.keys())):
-                table_name = list(source_metadata.tables.keys())[i]
-                source_table = source_metadata.tables[table_name]
-
-                rows = source_session.query(source_table).all()
-                # Insert rows into the destination table
-                with destination_engine.connect() as conn:
-                    conn.execute(text(f"truncate {table_name};"))
-                    entire_value = ""
-                    migratedRowCount = 0
-                    for row in rows:
-                        # print([type(i) for i in row])
-                        values = ", ".join(
-                            [
-                                (str(v) if not isinstance(v, NoneType) else "NULL")
-                                if (
-                                    isinstance(v, int)
-                                    or isinstance(v, NoneType)
-                                    or isinstance(v, decimal.Decimal)
-                                    or isinstance(v, float)
-                                )
-                                else (
-                                    '"' + v.strftime("%Y-%m-%d %H:%M:%S") + '"' if isinstance(v, datetime.datetime)
-                                    else '"' + v.strftime("%Y-%m-%d") + '"' if isinstance(v, datetime.date)
-                                    else "'" + v + "'" if '"' in v
-                                    else '"' + v + '"'
-                                )
-                                for v in row
-                            ]
-                        )
-                        wraped_values = "( " + values + " ), "
-                        entire_value += wraped_values
-                        migratedRowCount += 1
-                    conn.execute(
-                        text(f"INSERT INTO {table_name} VALUES {entire_value[:-2]}")
-                    )
-                    conn.commit()
-                globalVariables.setMigratedRows(table_name, migratedRowCount)
-                logging.info("Finished Table:"+table_name)
-                
+            # Run the migration over the table list
+            output = migrate_table_list(list(source_metadata.tables.keys()), source_metadata, source_session, destination_engine, True)
 
             # Commit the changes in the destination database
             destination_session.commit()
@@ -227,7 +140,7 @@ def migrate_all():
             end_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             print(f"Migration ended at {end_time}")
             logging.shutdown()
-            return make_response(jsonify(globalVariables.getMigratedRows()), 200)
+            return make_response(jsonify(output), 200)
         else:
             return make_response("Database credentials incorrect.", 500)
 
@@ -235,3 +148,51 @@ def migrate_all():
         # handle the exception
         print("An exception occurred:", error)
         return make_response(str(error), 500)
+
+
+def migrate_table_list(table_list, source_metadata, source_session, destination_engine, shouldLog = False):
+    output = {}
+    for i in range(len(table_list)):
+        table_name = table_list[i]
+        if table_name not in source_metadata.tables:
+            output[table_name] = "Table does not exist in local database."
+            continue
+
+        source_table = source_metadata.tables[table_name]
+        rows = source_session.query(source_table).all()
+        # Insert rows into the destination table
+        with destination_engine.connect() as conn:
+            conn.execute(text(f"truncate {table_name};"))
+            entire_value = ""
+            migratedRowCount = 0
+            for row in rows:
+                values = ", ".join(
+                    [
+                        (str(v) if not isinstance(v, NoneType) else "NULL")
+                        if (
+                            isinstance(v, int)
+                            or isinstance(v, NoneType)
+                            or isinstance(v, decimal.Decimal)
+                            or isinstance(v, float)
+                        )
+                        else (
+                            '"' + v.strftime("%Y-%m-%d %H:%M:%S") + '"' if isinstance(v, datetime.datetime)
+                            else '"' + v.strftime("%Y-%m-%d") + '"' if isinstance(v, datetime.date)
+                            else "'" + v + "'" if '"' in v
+                            else '"' + v + '"'
+                        )
+                        for v in row
+                    ]
+                )
+                wraped_values = "( " + values + " ), "
+                entire_value += wraped_values
+                migratedRowCount += 1
+            conn.execute(
+                text(f"INSERT INTO {table_name} VALUES {entire_value[:-2]}")
+            )
+            conn.commit()
+        globalVariables.setMigratedRows(table_name, migratedRowCount)
+        if shouldLog:
+            logging.info("Finished Table:"+table_name)
+        output[table_name] = migratedRowCount
+    return output
