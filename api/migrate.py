@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify, make_response, request, session
-from sqlalchemy import MetaData, text
+from sqlalchemy import MetaData, text, Table
 from sqlalchemy.orm import sessionmaker
 from api.credentials import localDbConnectionDict, cloudDbConnectionDict, early_return_decorator
 import decimal, datetime
@@ -29,6 +29,99 @@ class GlobalVariables():
 globalVariables = GlobalVariables()
 
 migrate_blueprint = Blueprint("migrate", __name__)
+random_string = "zkqygj"
+history_suffix = random_string + "history"
+
+def alter_table_statement(table_name,source_metadata):
+    table = Table(table_name,source_metadata)
+    primaryKeyColNames = [pk_column.name for pk_column in table.primary_key.columns.values()]
+    #pk_without_revision =   primaryKeyColNames.copy()
+    #if f"revision_{random_string}" in pk_without_revision:
+    #    pk_without_revision.remove(f"revision_{random_string}")
+        
+    modify_pk = [f"MODIFY COLUMN {pk_column.name} int(11) NOT NULL,"   for pk_column in table.primary_key.columns.values()]
+    #primaryKeyColNames_without_revision_str = ", ".join(pk_without_revision)
+    primaryKeyColName_str = ", ".join(primaryKeyColNames)
+    modify_pk_str = " ".join(modify_pk)
+    return f""" 
+    ALTER TABLE {table_name} {modify_pk_str} 
+    DROP PRIMARY KEY, ENGINE = MyISAM,
+    ADD action_{random_string} VARCHAR(8) DEFAULT 'insert' FIRST, 
+    ADD revision_{random_string} INT(6) NOT NULL AUTO_INCREMENT AFTER action_{random_string},
+    ADD dt_datetime_{random_string} DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER revision_{random_string},
+    ADD PRIMARY KEY ({primaryKeyColName_str}, revision_{random_string});
+    """
+def drop_trigger(con,table_name):
+    con.execute(text(f"DROP TRIGGER IF EXISTS {table_name}__ai;"))
+    con.execute(text(f"DROP TRIGGER IF EXISTS {table_name}__au;"))
+    con.execute(text(f"DROP TRIGGER IF EXISTS {table_name}__bd;"))
+
+    
+    
+def add_trigger(con, table_name,source_metadata):
+    table = Table(table_name,source_metadata)
+    primaryKeyColNames = [f" d.{pk_column.name} = NEW.{pk_column.name} " for pk_column in table.primary_key.columns.values()]
+    primaryKeyColNames_str = " AND ".join(primaryKeyColNames)
+    old_primaryKeyColNames = [f" d.{pk_column.name} = OLD.{pk_column.name} " for pk_column in table.primary_key.columns.values()]
+    old_primaryKeyColNames_str = " AND ".join(old_primaryKeyColNames)
+    con.execute(text(f"""CREATE TRIGGER {table_name}__ai AFTER INSERT ON {table_name} FOR EACH ROW
+    INSERT INTO {table_name}_{history_suffix} SELECT 'insert', NULL, NOW(), d.* 
+    FROM {table_name} AS d WHERE {primaryKeyColNames_str};"""))
+    con.execute(text(f"""CREATE TRIGGER {table_name}__au AFTER UPDATE ON {table_name} FOR EACH ROW
+    INSERT INTO {table_name}_{history_suffix} SELECT 'update', NULL, NOW(), d.*
+    FROM {table_name} AS d WHERE {primaryKeyColNames_str};
+                     """))
+    con.execute(text(f"""CREATE TRIGGER {table_name}__bd BEFORE DELETE ON {table_name} FOR EACH ROW
+    INSERT INTO {table_name}_{history_suffix} SELECT 'delete', NULL, NOW(), d.* 
+    FROM {table_name} AS d WHERE {old_primaryKeyColNames_str};
+                     """))
+
+        
+@migrate_blueprint.route("/v1/create_history", methods=["POST"])
+@early_return_decorator
+def create_history_tables():
+    session_id = session["session_id"]
+    localDbConnection = localDbConnectionDict[session_id]
+    source_engine = localDbConnection.get_engine()
+    source_metadata = MetaData()
+    source_metadata.reflect(source_engine)
+    #create_history_table_statements = ""
+    #create_history_table_template = lambda name: f"DROP table IF EXISTS {name}_zKQygJhistory;\n CREATE TABLE {name}_zKQygJhistory LIKE {name}; \n"
+    with  source_engine.connect() as con:  
+        for table_name in source_metadata.tables:
+            if history_suffix not in table_name: 
+                con.execute(text(f"DROP table IF EXISTS {table_name}_{history_suffix};"))
+                print(table_name,history_suffix)
+                con.execute(text(f"CREATE TABLE {table_name}_{history_suffix} LIKE {table_name};"))
+                #create_history_table_statements += create_history_table_template(table_name)
+                #print(create_history_table_statements)
+         
+        con.commit()
+    source_metadata = MetaData()
+    source_metadata.reflect(source_engine)
+    with  source_engine.connect() as con:  
+        for table_name in source_metadata.tables:
+            
+            if history_suffix in table_name:
+                con.execute(text(alter_table_statement(table_name,source_metadata)))
+            else:
+                drop_trigger(con,table_name)
+        con.commit()
+    source_metadata.reflect(source_engine)
+    with  source_engine.connect() as con:  
+        for table_name in source_metadata.tables:
+            if history_suffix not in table_name:
+                add_trigger(con, table_name, source_metadata)
+        con.commit()
+        
+
+
+    return "OK"    
+
+
+
+
+
 
 
 @migrate_blueprint.route("/v1/migrate_tables", methods=["POST"])
@@ -49,10 +142,6 @@ def migrate_tables():
                 source_metadata = MetaData()
                 source_metadata.reflect(source_engine)
 
-                with destination_engine.connect() as con:
-                    con.execute(text("SET FOREIGN_KEY_CHECKS=0"))
-                    con.commit()
-
                 Session = sessionmaker(bind=source_engine)
                 source_session = Session()
 
@@ -65,10 +154,6 @@ def migrate_tables():
 
                 # Commit the changes in the destination database
                 destination_session.commit()
-
-                with destination_engine.connect() as con:
-                    con.execute(text("SET FOREIGN_KEY_CHECKS=1"))
-                    con.commit()
 
                 # Close the sessions
                 source_session.close()
@@ -112,10 +197,6 @@ def migrate_all():
             source_metadata = MetaData()
             source_metadata.reflect(source_engine)
 
-            with destination_engine.connect() as con:
-                con.execute(text("SET FOREIGN_KEY_CHECKS=0"))
-                con.commit()
-
             # Create a session for the source database
             Session = sessionmaker(bind=source_engine)
             source_session = Session()
@@ -129,10 +210,6 @@ def migrate_all():
 
             # Commit the changes in the destination database
             destination_session.commit()
-
-            with destination_engine.connect() as con:
-                con.execute(text("SET FOREIGN_KEY_CHECKS=1"))
-                con.commit()
 
             # Close the sessions
             source_session.close()
@@ -152,16 +229,18 @@ def migrate_all():
 
 def migrate_table_list(table_list, source_metadata, source_session, destination_engine, shouldLog = False):
     output = {}
-    for i in range(len(table_list)):
-        table_name = table_list[i]
-        if table_name not in source_metadata.tables:
-            output[table_name] = "Table does not exist in local database."
-            continue
+    with destination_engine.connect() as conn:
+        conn.execute(text("SET FOREIGN_KEY_CHECKS=0"))
+        conn.commit()
+        for i in range(len(table_list)):
+            table_name = table_list[i]
+            if table_name not in source_metadata.tables:
+                output[table_name] = "Table does not exist in local database."
+                continue
 
-        source_table = source_metadata.tables[table_name]
-        rows = source_session.query(source_table).all()
-        # Insert rows into the destination table
-        with destination_engine.connect() as conn:
+            source_table = source_metadata.tables[table_name]
+            rows = source_session.query(source_table).all()
+            # Insert rows into the destination table
             conn.execute(text(f"truncate {table_name};"))
             entire_value = ""
             migratedRowCount = 0
@@ -191,8 +270,10 @@ def migrate_table_list(table_list, source_metadata, source_session, destination_
                 text(f"INSERT INTO {table_name} VALUES {entire_value[:-2]}")
             )
             conn.commit()
-        globalVariables.setMigratedRows(table_name, migratedRowCount)
-        if shouldLog:
-            logging.info("Finished Table:"+table_name)
-        output[table_name] = migratedRowCount
+            globalVariables.setMigratedRows(table_name, migratedRowCount)
+            if shouldLog:
+                logging.info("Finished Table:"+table_name)
+            output[table_name] = migratedRowCount
+        conn.execute(text("SET FOREIGN_KEY_CHECKS=1"))
+        conn.commit()
     return output
