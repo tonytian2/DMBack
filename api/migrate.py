@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify, make_response, request, session
-from sqlalchemy import MetaData, text
+from sqlalchemy import MetaData, text, Table
 from sqlalchemy.orm import sessionmaker
 from api.credentials import localDbConnectionDict, cloudDbConnectionDict, early_return_decorator
 import decimal, datetime
@@ -29,6 +29,86 @@ class GlobalVariables():
 globalVariables = GlobalVariables()
 
 migrate_blueprint = Blueprint("migrate", __name__)
+history_suffix = "zkqygjhistory"
+
+def alter_table_statement(table_name,source_metadata):
+    table = Table(table_name,source_metadata)
+    primaryKeyColNames = [pk_column.name for pk_column in table.primary_key.columns.values()]
+    modify_pk = [f"MODIFY COLUMN {pk_column.name} int(11) NOT NULL,"   for pk_column in table.primary_key.columns.values()]
+    primaryKeyColNames_str = ", ".join(primaryKeyColNames)
+    modify_pk_str = " ".join(modify_pk)
+    return f""" 
+    ALTER TABLE {table_name} {modify_pk_str} 
+    DROP PRIMARY KEY, ENGINE = MyISAM,
+     ADD action VARCHAR(8) DEFAULT 'insert' FIRST, 
+    ADD revision INT(6) NOT NULL AUTO_INCREMENT AFTER action,
+    ADD dt_datetime DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER revision,
+    ADD PRIMARY KEY ({primaryKeyColNames_str}, revision);
+    """
+def drop_trigger(con,table_name):
+    con.execute(text(f"DROP TRIGGER IF EXISTS {table_name}__ai;"))
+    con.execute(text(f"DROP TRIGGER IF EXISTS {table_name}__au;"))
+    con.execute(text(f"DROP TRIGGER IF EXISTS {table_name}__bd;"))
+
+    
+    
+def add_trigger(con, table_name,source_metadata):
+    table = Table(table_name,source_metadata)
+    primaryKeyColNames = [f" d.{pk_column.name} = NEW.{pk_column.name} " for pk_column in table.primary_key.columns.values()]
+    primaryKeyColNames_str = " AND ".join(primaryKeyColNames)
+    for trigger in [("ai","insert"), ("au","update"), ("bd","delete")]:
+        con.execute(text(f"""CREATE TRIGGER {table_name}__{trigger[0]} AFTER INSERT ON {table_name} FOR EACH ROW
+        INSERT INTO {table_name}_{history_suffix} SELECT '{trigger[1]}', NULL, NOW(), d.* 
+        FROM  {table_name} AS d WHERE {primaryKeyColNames_str};"""))
+
+        
+@migrate_blueprint.route("/v1/create_history", methods=["POST"])
+@early_return_decorator
+def create_hisotry_tables():
+    session_id = session["session_id"]
+    localDbConnection = localDbConnectionDict[session_id]
+    source_engine = localDbConnection.get_engine()
+    source_metadata = MetaData()
+    source_metadata.reflect(source_engine)
+    with  source_engine.connect() as con:
+        con.execute(text("SET FOREIGN_KEY_CHECKS=0"))
+        con.commit()
+    #create_history_table_statements = ""
+    #create_history_table_template = lambda name: f"DROP table IF EXISTS {name}_zKQygJhistory;\n CREATE TABLE {name}_zKQygJhistory LIKE {name}; \n"
+    with  source_engine.connect() as con:  
+        for table_name in source_metadata.tables:
+            if history_suffix not in table_name: 
+                con.execute(text(f"DROP table IF EXISTS {table_name}_{history_suffix};"))
+                con.execute(text(f"CREATE TABLE {table_name}_{history_suffix} LIKE {table_name};"))
+                #create_history_table_statements += create_history_table_template(table_name)
+                #print(create_history_table_statements)
+         
+        con.commit()
+
+    source_metadata.reflect(source_engine)
+    with  source_engine.connect() as con:  
+        for table_name in source_metadata.tables:
+            
+            if history_suffix in table_name:
+                con.execute(text(alter_table_statement(table_name,source_metadata)))
+            else:
+                drop_trigger(con,table_name)
+        con.commit()
+    source_metadata.reflect(source_engine)
+    with  source_engine.connect() as con:  
+        for table_name in source_metadata.tables:
+            if history_suffix not in table_name:
+                add_trigger(con, table_name, source_metadata)
+        con.commit()
+        
+
+
+    return "OK"    
+
+
+
+
+
 
 
 @migrate_blueprint.route("/v1/migrate_tables", methods=["POST"])
