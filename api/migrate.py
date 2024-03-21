@@ -79,7 +79,7 @@ def add_trigger(con, table_name,source_metadata):
         
 @migrate_blueprint.route("/v1/create_history", methods=["POST"])
 @early_return_decorator
-def create_hisotry_tables():
+def create_history_tables():
     session_id = session["session_id"]
     localDbConnection = localDbConnectionDict[session_id]
     source_engine = localDbConnection.get_engine()
