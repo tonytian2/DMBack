@@ -138,10 +138,6 @@ def migrate_tables():
                 source_metadata = MetaData()
                 source_metadata.reflect(source_engine)
 
-                with destination_engine.connect() as con:
-                    con.execute(text("SET FOREIGN_KEY_CHECKS=0"))
-                    con.commit()
-
                 Session = sessionmaker(bind=source_engine)
                 source_session = Session()
 
@@ -154,10 +150,6 @@ def migrate_tables():
 
                 # Commit the changes in the destination database
                 destination_session.commit()
-
-                with destination_engine.connect() as con:
-                    con.execute(text("SET FOREIGN_KEY_CHECKS=1"))
-                    con.commit()
 
                 # Close the sessions
                 source_session.close()
@@ -201,10 +193,6 @@ def migrate_all():
             source_metadata = MetaData()
             source_metadata.reflect(source_engine)
 
-            with destination_engine.connect() as con:
-                con.execute(text("SET FOREIGN_KEY_CHECKS=0"))
-                con.commit()
-
             # Create a session for the source database
             Session = sessionmaker(bind=source_engine)
             source_session = Session()
@@ -218,10 +206,6 @@ def migrate_all():
 
             # Commit the changes in the destination database
             destination_session.commit()
-
-            with destination_engine.connect() as con:
-                con.execute(text("SET FOREIGN_KEY_CHECKS=1"))
-                con.commit()
 
             # Close the sessions
             source_session.close()
@@ -241,16 +225,18 @@ def migrate_all():
 
 def migrate_table_list(table_list, source_metadata, source_session, destination_engine, shouldLog = False):
     output = {}
-    for i in range(len(table_list)):
-        table_name = table_list[i]
-        if table_name not in source_metadata.tables:
-            output[table_name] = "Table does not exist in local database."
-            continue
+    with destination_engine.connect() as conn:
+        conn.execute(text("SET FOREIGN_KEY_CHECKS=0"))
+        conn.commit()
+        for i in range(len(table_list)):
+            table_name = table_list[i]
+            if table_name not in source_metadata.tables:
+                output[table_name] = "Table does not exist in local database."
+                continue
 
-        source_table = source_metadata.tables[table_name]
-        rows = source_session.query(source_table).all()
-        # Insert rows into the destination table
-        with destination_engine.connect() as conn:
+            source_table = source_metadata.tables[table_name]
+            rows = source_session.query(source_table).all()
+            # Insert rows into the destination table
             conn.execute(text(f"truncate {table_name};"))
             entire_value = ""
             migratedRowCount = 0
@@ -280,8 +266,10 @@ def migrate_table_list(table_list, source_metadata, source_session, destination_
                 text(f"INSERT INTO {table_name} VALUES {entire_value[:-2]}")
             )
             conn.commit()
-        globalVariables.setMigratedRows(table_name, migratedRowCount)
-        if shouldLog:
-            logging.info("Finished Table:"+table_name)
-        output[table_name] = migratedRowCount
+            globalVariables.setMigratedRows(table_name, migratedRowCount)
+            if shouldLog:
+                logging.info("Finished Table:"+table_name)
+            output[table_name] = migratedRowCount
+        conn.execute(text("SET FOREIGN_KEY_CHECKS=1"))
+        conn.commit()
     return output
