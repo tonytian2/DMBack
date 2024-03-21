@@ -66,69 +66,38 @@ def validate_snapshot_completeness(table_names, cloud_engine):
 
     return output
 
-@validate_blueprint.route("/v1/validation/accuracy/<float:accuracy>", methods=["POST"])
+@validate_blueprint.route("/v1/validation/accuracy/<accuracy>", methods=["GET", "POST"])
 @early_return_decorator
 def getValidateAccuracy(accuracy):
-
     session_id = session["session_id"]
-    data = request.get_json()
-    if "table" in data and isinstance(data["table"], str):
-        table_name = data["table"]
-        local_csv_path = data.get("csv_file")
-        cloud_db_connection = cloudDbConnectionDict[session_id]()
+    cloud_db_connection = cloudDbConnectionDict[session_id]
 
-        if local_csv_path and cloud_db_connection.isValid:
-            cloud_engine = cloud_db_connection.get_engine()
+    try:
+        accuracy = float(accuracy)
+    except ValueError:
+        return make_response("Invalid accuracy value: must be a float", 400)
 
-            Session = sessionmaker(bind=cloud_engine)
-            cloud_session = Session()
+    if cloud_db_connection.isValid:
+        cloud_engine = cloud_db_connection.get_engine()
 
-            # Read the local CSV file
-            with open(local_csv_path, 'r') as csvfile:
-                csv_reader = csv.reader(csvfile)
-                header = next(csv_reader)  # Skip the header row
-                rows = list(csv_reader)  # Read all remaining rows
+        # if was GET request
+        table_list = []
+        if request.method == "GET":
+            table_list = globalVariables.getMigratedRows().keys()
+        else:
+            # must be POST request
+            if "tables" in request.get_json() and isinstance(request.get_json()["tables"], list):
+                table_list = request.get_json()["tables"]
+            else:
+                return make_response("Invalid request", 400)
+            
+        output = validate_snapshot_accuracy(table_list, cloud_engine, min(1, max(0, accuracy)))
 
-            # Calculate the number of rows to compare based on accuracy
-            num_rows_to_compare = int(len(rows) * accuracy)
-            num_rows_to_compare = min(num_rows_to_compare, len(rows))  # Ensure it does not exceed the total number of rows
-
-            # Randomly select rows to compare
-            random_rows = random.sample(rows, num_rows_to_compare)
-
-            accuracy_results = []
-
-            for row in random_rows:
-                csv_row = row[1:]  # Exclude the first column (table_name) in the CSV row
-                csv_row = [int(value) for value in csv_row]  # Convert values to integers if needed
-
-                # Query the cloud database for the same row
-                cloud_row = cloud_session.execute(f"SELECT * FROM {table_name} WHERE id = {csv_row[0]}").fetchone()
-
-                if cloud_row:
-                    cloud_row_values = list(cloud_row[1:])  # Exclude the first column (id) in the cloud row
-                    cloud_row_values = [int(value) for value in cloud_row_values]  # Convert values to integers if needed
-
-                    # Compare the values
-                    row_accuracy = sum(1 for csv_value, cloud_value in zip(csv_row, cloud_row_values) if csv_value == cloud_value) / len(csv_row)
-                    accuracy_results.append(row_accuracy)
-
-            # Calculate the overall accuracy
-            overall_accuracy = sum(accuracy_results) / len(accuracy_results) if accuracy_results else 0
-
-            data = {
-                "num_rows_to_compare": num_rows_to_compare,
-                "overall_accuracy": overall_accuracy,
-                "row_accuracy": accuracy_results
-            }
-
-            cloud_session.close()
-
-            return make_response(jsonify(data), 200)
-
-        return make_response("CSV file or cloud connection not valid", 500)
+        json_response = jsonify(output)
+        return make_response(json_response, 200)
     else:
-        return make_response("Invalid request.", 400)
+        return make_response("Cloud credentials incorrect", 500)
+    
 
 # compare the local and the cloud database 
 @validate_blueprint.route("/v1/validateLocalAndCloud", methods=["POST"])
@@ -160,6 +129,42 @@ def validateLocalAndCloud():
         return make_response(jsonify(output), 200)
     else:
         return make_response("Database credentials incorrect.", 500)
+
+def validate_snapshot_accuracy(table_names, cloud_engine, percentage):
+    Session = sessionmaker(bind=cloud_engine)
+    cloud_session = Session()
+    output = {}
+    for table_name in table_names:
+        snapshot_data = get_latest_snapshot_data(table_name)
+        if snapshot_data is None:
+            output[table_name] = {
+                "error": "Snapshot data not found"
+            }
+        else:
+            snapshot_data = get_latest_snapshot_data(table_name)
+            snapshot_row_count = len(snapshot_data)
+            snapshot_rows = snapshot_data[:max(1, int(snapshot_row_count * float(percentage)))]
+            cloud_rows = cloud_session.execute(text(f"SELECT * from {table_name} LIMIT {max(1,int(snapshot_row_count * float(percentage)))}")).fetchall()
+
+            # # FOR DEBUGGING
+            # match_count = 0
+            # for snapshot_row, cloud_row in zip(snapshot_rows, cloud_rows):
+            #     print("ss:")
+            #     print(snapshot_row)
+            #     print("cl:")
+            #     print(cloud_row)
+            #     if snapshot_row == cloud_row:
+            #         match_count += 1
+
+
+            match_count = sum(snapshot_row == cloud_row for snapshot_row, cloud_row in zip(snapshot_rows, cloud_rows))
+
+            accuracy = match_count / len(snapshot_rows) * 100
+            output[table_name] = {
+                "accuracy": accuracy
+            }
+
+    return output
 
 def get_accuracy_for_table(tableName, percentage, source_metadata, source_session, cloud_engine):
     if tableName not in source_metadata.tables:

@@ -27,7 +27,7 @@ def snapshot_database_tables(source_metadata, source_session):
 
 import csv
 
-# get the latest snapshot data as a list. Each row is a list of strings
+# get the latest snapshot data as a list
 def get_latest_snapshot_data(table_name):
     csv_snapshots = [file for file in os.listdir('snapshot') if file.startswith(table_name + '_')]
     if not csv_snapshots:
@@ -48,7 +48,11 @@ def get_latest_snapshot_data(table_name):
                     typed_row.append(int(value))
                 elif 'decimal' in type.lower():
                     typed_row.append(Decimal(value))
+                elif 'time' in type.lower():
+                    typed_row.append(datetime.datetime.strptime(value, "%Y-%m-%d %H:%M:%S"))
+                elif 'date' in type.lower():
+                    typed_row.append(datetime.datetime.strptime(value, "%Y-%m-%d").date())
                 else:
                     typed_row.append(value)
-            data.append(typed_row)
+            data.append(tuple(typed_row))
     return data
