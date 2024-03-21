@@ -3,55 +3,68 @@ from sqlalchemy import MetaData, text
 from sqlalchemy.orm import sessionmaker
 from api.credentials import localDbConnectionDict, cloudDbConnectionDict, early_return_decorator
 from api.migrate import globalVariables
+from util.snapshots import get_latest_snapshot_data
 import csv
 import random
 
 validate_blueprint = Blueprint("validate", __name__)
 
-# validate the completness of the csv and also the cloud, should pass the table name and also the url for the csv file in postman 
-@validate_blueprint.route("/v1/validation/completeness", methods=["POST"])
+# validate completeness of the cloud against the snapshot csvs
+@validate_blueprint.route("/v1/validation/completeness", methods=["GET", "POST"])
 @early_return_decorator
-def getValidateCompletenessbyTable():
-
+def getValidateCompleteness():
     session_id = session["session_id"]
-    data = request.get_json()
-    if "table" in data and isinstance(data["table"], str):      # assume only a table in the csv file 
-        table_name = data["table"]
-        local_csv_path = data.get("csv_file")
-        cloud_db_connection = cloudDbConnectionDict[session_id]()
+    cloud_db_connection = cloudDbConnectionDict[session_id]
 
-        if local_csv_path and cloud_db_connection.isValid:
-            cloud_engine = cloud_db_connection.get_engine()
+    if cloud_db_connection.isValid:
+        cloud_engine = cloud_db_connection.get_engine()
 
-            Session = sessionmaker(bind=cloud_engine)
-            cloud_session = Session()
+        # if was GET request
+        table_list = []
+        if request.method == "GET":
+            table_list = globalVariables.getMigratedRows().keys()
+        else:
+            # must be POST request
+            if "tables" in request.get_json() and isinstance(request.get_json()["tables"], list):
+                table_list = request.get_json()["tables"]
+            else:
+                return make_response("Invalid request", 400)
+            
+        output = validate_snapshot_completeness(table_list, cloud_engine)
 
-            # Read row count from the CSV file
-            with open(local_csv_path, 'r') as csvfile:
-                csv_reader = csv.reader(csvfile)
-                header = next(csv_reader)  # Skip the header row
-                row = next(csv_reader)  # Read the first row
-                csv_table_name = row[0]
-                row_count = int(row[1])
+        json_response = jsonify(output)
+        return make_response(json_response, 200)
+    else:
+        return make_response("Cloud credentials incorrect", 500)
 
-            if csv_table_name != table_name:
-                return make_response("Table name in the CSV file does not match the requested table.", 400)
 
-            # Get destination row count from the cloud database
-            cloud_row_count = cloud_session.execute(f"SELECT COUNT(*) FROM {table_name}").scalar()
+# actual completeness validation logic of a given list of tables
+def validate_snapshot_completeness(table_names, cloud_engine):
 
-            data = {
-                "source_row_count": row_count,
+    Session = sessionmaker(bind=cloud_engine)
+    cloud_session = Session()
+
+    total_row_count_dict = {}
+    cloud_row_count_dict = {}
+    output = {}
+    for table_name in table_names:
+        snapshot_data = get_latest_snapshot_data(table_name)
+        if snapshot_data is None:
+            output[table_name] = {
+                "error": "Snapshot data not found"
+            }
+        else:
+            snapshot_row_count = len(get_latest_snapshot_data(table_name))
+            total_row_count_dict[table_name] = snapshot_row_count
+            cloud_row_count = cloud_session.execute(text(f"SELECT COUNT(*) FROM {table_name}")).scalar()
+            cloud_row_count_dict[table_name] = cloud_row_count
+            output[table_name] = {
+                "source_row_count": snapshot_row_count,
                 "destination_row_count": cloud_row_count,
-                "completeness": 0 if row_count == 0 else cloud_row_count / row_count
+                "completeness": 0 if snapshot_row_count == 0 else cloud_row_count / snapshot_row_count
             }
 
-            return make_response(jsonify(data), 200)
-
-        return make_response("CSV file or cloud connection not valid", 500)
-    else:
-        return make_response("Invalid request.", 400)
-    
+    return output
 
 @validate_blueprint.route("/v1/validation/accuracy/<float:accuracy>", methods=["POST"])
 @early_return_decorator
