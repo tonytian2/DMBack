@@ -29,21 +29,27 @@ class GlobalVariables():
 globalVariables = GlobalVariables()
 
 migrate_blueprint = Blueprint("migrate", __name__)
-history_suffix = "zkqygjhistory"
+random_string = "zkqygj"
+history_suffix = random_string + "history"
 
 def alter_table_statement(table_name,source_metadata):
     table = Table(table_name,source_metadata)
     primaryKeyColNames = [pk_column.name for pk_column in table.primary_key.columns.values()]
+    #pk_without_revision =   primaryKeyColNames.copy()
+    #if f"revision_{random_string}" in pk_without_revision:
+    #    pk_without_revision.remove(f"revision_{random_string}")
+        
     modify_pk = [f"MODIFY COLUMN {pk_column.name} int(11) NOT NULL,"   for pk_column in table.primary_key.columns.values()]
-    primaryKeyColNames_str = ", ".join(primaryKeyColNames)
+    #primaryKeyColNames_without_revision_str = ", ".join(pk_without_revision)
+    primaryKeyColName_str = ", ".join(primaryKeyColNames)
     modify_pk_str = " ".join(modify_pk)
     return f""" 
     ALTER TABLE {table_name} {modify_pk_str} 
     DROP PRIMARY KEY, ENGINE = MyISAM,
-     ADD action VARCHAR(8) DEFAULT 'insert' FIRST, 
-    ADD revision INT(6) NOT NULL AUTO_INCREMENT AFTER action,
-    ADD dt_datetime DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER revision,
-    ADD PRIMARY KEY ({primaryKeyColNames_str}, revision);
+    ADD action_{random_string} VARCHAR(8) DEFAULT 'insert' FIRST, 
+    ADD revision_{random_string} INT(6) NOT NULL AUTO_INCREMENT AFTER action_{random_string},
+    ADD dt_datetime_{random_string} DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER revision_{random_string},
+    ADD PRIMARY KEY ({primaryKeyColName_str}, revision_{random_string});
     """
 def drop_trigger(con,table_name):
     con.execute(text(f"DROP TRIGGER IF EXISTS {table_name}__ai;"))
@@ -79,21 +85,19 @@ def create_hisotry_tables():
     source_engine = localDbConnection.get_engine()
     source_metadata = MetaData()
     source_metadata.reflect(source_engine)
-    with  source_engine.connect() as con:
-        con.execute(text("SET FOREIGN_KEY_CHECKS=0"))
-        con.commit()
     #create_history_table_statements = ""
     #create_history_table_template = lambda name: f"DROP table IF EXISTS {name}_zKQygJhistory;\n CREATE TABLE {name}_zKQygJhistory LIKE {name}; \n"
     with  source_engine.connect() as con:  
         for table_name in source_metadata.tables:
             if history_suffix not in table_name: 
                 con.execute(text(f"DROP table IF EXISTS {table_name}_{history_suffix};"))
+                print(table_name,history_suffix)
                 con.execute(text(f"CREATE TABLE {table_name}_{history_suffix} LIKE {table_name};"))
                 #create_history_table_statements += create_history_table_template(table_name)
                 #print(create_history_table_statements)
          
         con.commit()
-
+    source_metadata = MetaData()
     source_metadata.reflect(source_engine)
     with  source_engine.connect() as con:  
         for table_name in source_metadata.tables:
