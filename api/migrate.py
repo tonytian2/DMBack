@@ -56,10 +56,19 @@ def add_trigger(con, table_name,source_metadata):
     table = Table(table_name,source_metadata)
     primaryKeyColNames = [f" d.{pk_column.name} = NEW.{pk_column.name} " for pk_column in table.primary_key.columns.values()]
     primaryKeyColNames_str = " AND ".join(primaryKeyColNames)
-    for trigger in [("ai","insert"), ("au","update"), ("bd","delete")]:
-        con.execute(text(f"""CREATE TRIGGER {table_name}__{trigger[0]} AFTER INSERT ON {table_name} FOR EACH ROW
-        INSERT INTO {table_name}_{history_suffix} SELECT '{trigger[1]}', NULL, NOW(), d.* 
-        FROM  {table_name} AS d WHERE {primaryKeyColNames_str};"""))
+    old_primaryKeyColNames = [f" d.{pk_column.name} = OLD.{pk_column.name} " for pk_column in table.primary_key.columns.values()]
+    old_primaryKeyColNames_str = " AND ".join(old_primaryKeyColNames)
+    con.execute(text(f"""CREATE TRIGGER {table_name}__ai AFTER INSERT ON {table_name} FOR EACH ROW
+    INSERT INTO {table_name}_{history_suffix} SELECT 'insert', NULL, NOW(), d.* 
+    FROM {table_name} AS d WHERE {primaryKeyColNames_str};"""))
+    con.execute(text(f"""CREATE TRIGGER {table_name}__au AFTER UPDATE ON {table_name} FOR EACH ROW
+    INSERT INTO {table_name}_{history_suffix} SELECT 'update', NULL, NOW(), d.*
+    FROM {table_name} AS d WHERE {primaryKeyColNames_str};
+                     """))
+    con.execute(text(f"""CREATE TRIGGER {table_name}__bd BEFORE DELETE ON {table_name} FOR EACH ROW
+    INSERT INTO {table_name}_{history_suffix} SELECT 'delete', NULL, NOW(), d.* 
+    FROM {table_name} AS d WHERE {old_primaryKeyColNames_str};
+                     """))
 
         
 @migrate_blueprint.route("/v1/create_history", methods=["POST"])
