@@ -31,7 +31,7 @@ def get_latest_snapshot_data(table_name):
     csv_snapshots = [file for file in os.listdir('snapshot') if file.startswith(table_name + '_')]
     latest_snapshot = sorted(csv_snapshots, reverse=True)[0]
     filepath = 'snapshot/' + latest_snapshot
-    with open(filepath, 'r') as csvfile:
+    with open(filepath, 'r', newline='') as csvfile:
         reader = csv.reader(csvfile)
         next(reader) # skip header
         types = next(reader)
