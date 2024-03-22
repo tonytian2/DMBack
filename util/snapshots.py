@@ -12,9 +12,9 @@ def snapshot_database_tables(source_metadata, source_session):
 
     for table_name in filtered_table_names:
         source_table = source_metadata.tables[table_name]
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         rows = source_session.query(source_table).all()
         fieldnames = [source_column.name for source_column in source_table.columns]
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         types = [source_column.type for source_column in source_table.columns]
         filepath = 'snapshot/' + table_name + '_' + timestamp + '.csv'
         
@@ -25,7 +25,6 @@ def snapshot_database_tables(source_metadata, source_session):
 
             writer.writerows(rows)
 
-import csv
 
 # get the latest snapshot data as a list
 def get_latest_snapshot_data(table_name):
