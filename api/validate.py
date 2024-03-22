@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify, make_response, session, request
-from sqlalchemy import MetaData, text
+from sqlalchemy import MetaData, text, select, func, Table, tuple_
 from sqlalchemy.orm import sessionmaker
 from api.credentials import localDbConnectionDict, cloudDbConnectionDict, early_return_decorator
 from api.migrate import globalVariables
@@ -9,9 +9,9 @@ import random
 validate_blueprint = Blueprint("validate", __name__)
 
 # validate the completness of the csv and also the cloud, should pass the table name and also the url for the csv file in postman 
-@validate_blueprint.route("/v1/validation/completeness", methods=["POST"])
+@validate_blueprint.route("/v1/firstValidation/completeness", methods=["POST"])
 @early_return_decorator
-def getValidateCompletenessbyTable():
+def getFirstValidateCompletenessbyTable():
 
     session_id = session["session_id"]
     data = request.get_json()
@@ -53,9 +53,9 @@ def getValidateCompletenessbyTable():
         return make_response("Invalid request.", 400)
     
 
-@validate_blueprint.route("/v1/validation/accuracy/<float:accuracy>", methods=["POST"])
+@validate_blueprint.route("/v1/firstValidation/accuracy/<float:accuracy>", methods=["POST"])
 @early_return_decorator
-def getValidateAccuracy(accuracy):
+def getFirstValidateAccuracy(accuracy):
 
     session_id = session["session_id"]
     data = request.get_json()
@@ -117,65 +117,184 @@ def getValidateAccuracy(accuracy):
     else:
         return make_response("Invalid request.", 400)
 
-# compare the local and the cloud database 
-@validate_blueprint.route("/v1/validateLocalAndCloud", methods=["POST"])
+
+# validate completeness of specific tables
+@validate_blueprint.route("/v1/secondValidation/completeness", methods=["POST"])
 @early_return_decorator
-def validateLocalAndCloud():
+def getSecondValidateCompletenessbyTable():
+
     session_id = session["session_id"]
-    localDbConnection = localDbConnectionDict[session_id]
-    cloudDbConnection = cloudDbConnectionDict[session_id]
-    if localDbConnection.isValid and cloudDbConnection.isValid:
-        source_engine = localDbConnection.get_engine()
-        cloud_engine = cloudDbConnection.get_engine()
+    data = request.get_json()
+    if "tables" in data and isinstance(data["tables"], list):
+        table_names = data["tables"]
+        localDbConnection = localDbConnectionDict[session_id]
+        cloudDbConnection = cloudDbConnectionDict[session_id]
+        if localDbConnection.isValid and cloudDbConnection.isValid:
+            local_engine = localDbConnection.get_engine()
+            cloud_engine = cloudDbConnection.get_engine()
 
-        source_metadata = MetaData()
-        source_metadata.reflect(source_engine)
-        Session = sessionmaker(bind=source_engine)
-        source_session = Session()
+            local_metadata = MetaData()
+            local_metadata.reflect(local_engine)
+            
+            output = {}
+            for i in range(len(table_names)):
+                tableName = table_names[i]
 
-        output = {}
-        for i in range(len(source_metadata.tables.keys())):
-            table_name = list(source_metadata.tables.keys())[i]
-            try:
-                accuracy = get_accuracy_for_table(table_name, 1, source_metadata, source_session, cloud_engine)
-                output[table_name] = {"accuracy": accuracy}
-            except Exception as e:
-                error_message = f"Error retrieving data: {str(e)}"
-                output[table_name] = {"error": error_message,"accuracy": 0}
-        
-        source_session.close()
-        return make_response(jsonify(output), 200)
+                if tableName not in local_metadata.tables:
+                    output[tableName] = {"error": "Table does not exist in the local database."}
+                    continue
+
+                Session = sessionmaker(bind=local_engine)
+                local_session = Session()
+                cloud_session = Session(bind=cloud_engine)
+
+                local_table = local_metadata.tables[tableName]
+
+                # Get row count for the specified table in the local database
+                local_row_count = local_session.query(local_table).count()
+
+                # Get row count for the specified table in the cloud database
+                cloud_row_count = cloud_session.query(local_table).count()
+                data = {}
+                data["source_row_count"] = local_row_count
+                data["destination_row_count"] = cloud_row_count
+                data["completeness"] = 0 if local_row_count == 0 else cloud_row_count / local_row_count
+                output[tableName] = data
+
+            return make_response(jsonify(output), 200 if local_row_count == cloud_row_count else 500)
+
+        return make_response("Local or cloud connection not valid", 500)
     else:
-        return make_response("Database credentials incorrect.", 500)
+        return make_response("Invalid request.", 400)
+    
 
-def get_accuracy_for_table(tableName, percentage, source_metadata, source_session, cloud_engine):
-    if tableName not in source_metadata.tables:
-        raise ValueError(f"Table does not exist in local database.")
-    source_table = source_metadata.tables[tableName]
+# validate the local history table and the cloud 
+@validate_blueprint.route("/v1/secondValidation/accuracy", methods=["POST"])
+@early_return_decorator
+def getSecondValidateAccuracy():
+    table_name = request.json.get("table_name")
+    
+    if table_name:
+        session_id = session["session_id"]
+        localDbConnection = localDbConnectionDict[session_id]
+        cloudDbConnection = cloudDbConnectionDict[session_id]
 
-    # Query the local database
-    local_row_count = source_session.query(source_table).count()
-    local_rows = (
-        source_session.query(source_table)
-        .limit(max(1, int(local_row_count * float(percentage))))
-        .all()
-    )
+        if localDbConnection.isValid and cloudDbConnection.isValid:
+            local_engine = localDbConnection.get_engine()
+            cloud_engine = cloudDbConnection.get_engine()
 
-    # Query the cloud database
-    with cloud_engine.connect() as con:
-        result = con.execute(
-            text(
-                f"SELECT * from {tableName} LIMIT {max(1,int(local_row_count * float(percentage)))}"
-            )
+            local_metadata = MetaData()
+            local_metadata.reflect(local_engine)
+            primary_key = get_primary_key_column(cloud_engine, table_name)
+
+            print(primary_key)
+
+            # Check if history table exists
+            history_table_name = table_name + "_zkqygjhistory"
+            if history_table_name not in local_metadata.tables:
+                return make_response("History table does not exist: "+history_table_name, 500)
+
+            # Get the latest change from local history table
+            latest_change = get_latest_change_from_history(local_engine, history_table_name, primary_key)
+            
+            total_row = len(latest_change)
+            matched_row = 0
+            # print(latest_change)       
+
+            # next step using loop for each history, check for update , insert , delete 
+            for row in latest_change:
+
+                action = row[0]  # Assuming action is the first column in the row
+                query = f"""select exists (
+                select 1 from {table_name} 
+                where {primary_key} = {row[3]}
+                ) as id_exist;"""
+
+                with cloud_engine.connect() as con:
+                    r = con.execute(text(query))
+                    result = r.fetchall()
+                if action == 'insert':
+                    print(result[0])
+
+                    if(result[0] == (1,)):
+                        # means the row in not in the cloud 
+                        matched_row += 1    # the row is in the cloud 
+                    else:
+                        matched_row += 0    # just does nothing here
+
+                elif action == 'update':
+                    print("updating")
+                    if(result[0] == (0,)):
+                        matched_row += 0    
+                    else:
+                        query = f"""select * from {table_name} where {primary_key} = {row[3]}"""
+                        # not only need to check is it in the cloud but also have to check the data
+                        with cloud_engine.connect() as con:
+                            # Execute the query using the provided engine
+                            r2 = con.execute(text(query))
+                        
+                            # Fetch the results and return them
+                            cloud_data = r2.fetchall()
+
+                        local_data = row[3:]
+                        if(cloud_data == local_data):
+                            matched_row += 1
+                        else:
+                            matched_row += 0
+                elif action == 'delete':
+                    print(result[0])
+
+                    if(result[0] == (0,)):
+                        # means the row in not exist in the cloud 
+                        matched_row += 1    
+                    else:
+                        matched_row += 0    
+                else:
+                    # Handle unrecognized action
+                    print("Unrecognized action:", action)
+            if(matched_row == total_row):
+                # return yes as json
+                return make_response("Second Validation success", 200)
+            
+            return make_response("Second Validation Not matched ", 200)
+            
+
+        else:
+            return make_response("Database credentials incorrect.", 500)
+    else:
+        return make_response("Table name not provided in the request body.", 400)
+
+
+
+
+def get_latest_change_from_history(engine, history_table_name, primary_key_column):
+    query = f"""
+        SELECT * FROM {history_table_name}
+        WHERE ({primary_key_column}, revision_zkqygj) IN (
+            SELECT {primary_key_column}, MAX(revision_zkqygj)
+            FROM {history_table_name}
+            GROUP BY {primary_key_column}
         )
-        cloud_rows = result.fetchall()
+    """
+    with engine.connect() as con:
+        # Execute the query using the provided engine
+        result = con.execute(text(query))
+    
+        # Fetch the results and return them
+        rows = result.fetchall()
+    
+    return rows
 
-    # Compare the accuracy
-    match_count = sum(
-        local_row == cloud_row
-        for local_row, cloud_row in zip(local_rows, cloud_rows)
-    )
 
-    accuracy = match_count / len(local_rows) * 100
+def get_primary_key_column(engine, table_name):
+    query = f"SHOW KEYS FROM {table_name} WHERE Key_name = 'PRIMARY'"
+    with engine.connect() as con:
+        result = con.execute(text(query))
+        primary_key = result.fetchone()
 
-    return accuracy
+    if primary_key:
+        primary_key_column = primary_key[4]  # Assuming column_name is at index 4
+        return primary_key_column
+    else:
+        raise ValueError(f"No primary key found for table: {table_name}")
+
