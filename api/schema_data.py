@@ -19,8 +19,10 @@ def get_table_info():
         Session = sessionmaker(bind=source_engine)
         source_session = Session()
         columnNames = {}
+        table_names = source_metadata.tables.keys()
+        filtered_table_names = [table_name for table_name in table_names if "zkqygjhistory" not in table_name]
 
-        for table_name in source_metadata.tables.keys():
+        for table_name in filtered_table_names:
 
             # Get row count
             query = text(
