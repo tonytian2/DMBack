@@ -1,10 +1,11 @@
 import csv
 import datetime
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 import os
 
 
 def snapshot_database_tables(source_metadata, source_session):
+    output = {}
     table_names = source_metadata.tables.keys()
     filtered_table_names = [tn for tn in table_names if 'zkqygjhistory' not in tn]
     if not os.path.exists('snapshot'):
@@ -24,6 +25,8 @@ def snapshot_database_tables(source_metadata, source_session):
             writer.writerow(types)
 
             writer.writerows(rows)
+        output[table_name] = len(rows)
+    return output
 
 
 # get the latest snapshot data as a list
