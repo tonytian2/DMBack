@@ -187,7 +187,7 @@ def getSecondValidateAccuracy():
             local_metadata.reflect(local_engine)
             primary_key = get_primary_key_column(cloud_engine, table_name)
 
-            print(primary_key)
+            print(f"primary_key is {primary_key}")
 
             # Check if history table exists
             history_table_name = table_name + "_zkqygjhistory"
@@ -197,6 +197,8 @@ def getSecondValidateAccuracy():
             # Get the latest change from local history table
             latest_change = get_latest_change_from_history(local_engine, history_table_name, primary_key)
             
+            print(f"latest_change is {latest_change}")
+
             total_row = len(latest_change)
             matched_row = 0
             # print(latest_change)       
@@ -204,17 +206,29 @@ def getSecondValidateAccuracy():
             # next step using loop for each history, check for update , insert , delete 
             for row in latest_change:
 
-                action = row[0]  # Assuming action is the first column in the row
-                query = f"""select exists (
-                select 1 from {table_name} 
-                where {primary_key} = {row[3]}
-                ) as id_exist;"""
+                action = row[0]  # get the action type (either insert, delete, update)
+                primary_key_values = row[3:3+len(primary_key)]
+
+                # check for the column is exist in the DB or not (0, --> not exist , 1, --> exist)
+                # query = f"""select exists (
+                # select 1 from {table_name} 
+                # where {primary_key[0]} = {row[3]}
+                # ) as id_exist;"""
+                where_clause = ' AND '.join([f"{column} = {value}" for column, value in zip(primary_key, primary_key_values)])
+
+                # Construct the final query
+                query = f"""SELECT EXISTS (
+                                SELECT 1 FROM {table_name} 
+                                WHERE {where_clause}
+                                ) AS id_exist;"""
+                
+                print(query)
 
                 with cloud_engine.connect() as con:
                     r = con.execute(text(query))
                     result = r.fetchall()
+                    
                 if action == 'insert':
-                    print(result[0])
 
                     if(result[0] == (1,)):
                         # means the row in not in the cloud 
@@ -223,11 +237,10 @@ def getSecondValidateAccuracy():
                         matched_row += 0    # just does nothing here
 
                 elif action == 'update':
-                    print("updating")
                     if(result[0] == (0,)):
                         matched_row += 0    
                     else:
-                        query = f"""select * from {table_name} where {primary_key} = {row[3]}"""
+                        query = f"""select * from {table_name} where {where_clause}"""
                         # not only need to check is it in the cloud but also have to check the data
                         with cloud_engine.connect() as con:
                             # Execute the query using the provided engine
@@ -242,8 +255,6 @@ def getSecondValidateAccuracy():
                         else:
                             matched_row += 0
                 elif action == 'delete':
-                    print(result[0])
-
                     if(result[0] == (0,)):
                         # means the row in not exist in the cloud 
                         matched_row += 1    
@@ -266,15 +277,31 @@ def getSecondValidateAccuracy():
 
 
 
-
+# get all the lastest chages for all the row in the history table
 def get_latest_change_from_history(engine, history_table_name, primary_key_column):
+    # query = f"""
+    #     SELECT * FROM {history_table_name}
+    #     WHERE ({primary_key_column}, revision_zkqygj) IN (
+    #         SELECT {primary_key_column}, MAX(revision_zkqygj)
+    #         FROM {history_table_name}
+    #         GROUP BY {primary_key_column}
+    #     )
+    # """
+    # Construct the comma-separated primary key column names
+    primary_key_columns_str = ', '.join(primary_key_column)
+    print(f"primary_key_columns_str is {primary_key_columns_str}")
+
+    # Construct the IN subquery to get the latest revisions
+    in_subquery = f"""
+        SELECT {primary_key_columns_str}, MAX(revision_zkqygj)
+        FROM {history_table_name}
+        GROUP BY {primary_key_columns_str}
+    """
+
+    # Construct the main query using the primary key columns
     query = f"""
         SELECT * FROM {history_table_name}
-        WHERE ({primary_key_column}, revision_zkqygj) IN (
-            SELECT {primary_key_column}, MAX(revision_zkqygj)
-            FROM {history_table_name}
-            GROUP BY {primary_key_column}
-        )
+        WHERE ({primary_key_columns_str}, revision_zkqygj) IN ({in_subquery})
     """
     with engine.connect() as con:
         # Execute the query using the provided engine
@@ -286,14 +313,16 @@ def get_latest_change_from_history(engine, history_table_name, primary_key_colum
     return rows
 
 
-def get_primary_key_column(engine, table_name):
+def get_primary_key_column(engine, table_name):       # may cause issue since it only work for single primary key
     query = f"SHOW KEYS FROM {table_name} WHERE Key_name = 'PRIMARY'"
     with engine.connect() as con:
         result = con.execute(text(query))
-        primary_key = result.fetchone()
+        # primary_key = result.fetchone()
+        primary_key = result.fetchall()
 
     if primary_key:
-        primary_key_column = primary_key[4]  # Assuming column_name is at index 4
+        # primary_key_column = primary_key[4]  
+        primary_key_column = [pk[4] for pk in primary_key]
         return primary_key_column
     else:
         raise ValueError(f"No primary key found for table: {table_name}")
