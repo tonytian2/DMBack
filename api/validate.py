@@ -168,7 +168,7 @@ def getSecondValidateCompletenessbyTable():
         return make_response("Invalid request.", 400)
     
 
-# validate the local history table and the cloud 
+# validate the local history table and the cloud --> assume it is 100% so does not need for input 
 @validate_blueprint.route("/v1/secondValidation/accuracy", methods=["POST"])
 @early_return_decorator
 def getSecondValidateAccuracy():
@@ -201,19 +201,12 @@ def getSecondValidateAccuracy():
 
             total_row = len(latest_change)
             matched_row = 0
-            # print(latest_change)       
 
             # next step using loop for each history, check for update , insert , delete 
             for row in latest_change:
 
                 action = row[0]  # get the action type (either insert, delete, update)
                 primary_key_values = row[3:3+len(primary_key)]
-
-                # check for the column is exist in the DB or not (0, --> not exist , 1, --> exist)
-                # query = f"""select exists (
-                # select 1 from {table_name} 
-                # where {primary_key[0]} = {row[3]}
-                # ) as id_exist;"""
                 where_clause = ' AND '.join([f"{column} = {value}" for column, value in zip(primary_key, primary_key_values)])
 
                 # Construct the final query
@@ -222,8 +215,6 @@ def getSecondValidateAccuracy():
                                 WHERE {where_clause}
                                 ) AS id_exist;"""
                 
-                print(query)
-
                 with cloud_engine.connect() as con:
                     r = con.execute(text(query))
                     result = r.fetchall()
@@ -279,18 +270,8 @@ def getSecondValidateAccuracy():
 
 # get all the lastest chages for all the row in the history table
 def get_latest_change_from_history(engine, history_table_name, primary_key_column):
-    # query = f"""
-    #     SELECT * FROM {history_table_name}
-    #     WHERE ({primary_key_column}, revision_zkqygj) IN (
-    #         SELECT {primary_key_column}, MAX(revision_zkqygj)
-    #         FROM {history_table_name}
-    #         GROUP BY {primary_key_column}
-    #     )
-    # """
     # Construct the comma-separated primary key column names
     primary_key_columns_str = ', '.join(primary_key_column)
-    print(f"primary_key_columns_str is {primary_key_columns_str}")
-
     # Construct the IN subquery to get the latest revisions
     in_subquery = f"""
         SELECT {primary_key_columns_str}, MAX(revision_zkqygj)
