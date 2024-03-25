@@ -1,10 +1,10 @@
 from flask import Blueprint, session, make_response, jsonify
 from sqlalchemy import MetaData, text
 from sqlalchemy.orm import sessionmaker
-from api.credentials import localDbConnectionDict, early_return_decorator
+from util.globals import localDbConnectionDict, early_return_decorator
 import os
-schema_data_blueprint = Blueprint("schema_data", __name__)
 
+schema_data_blueprint = Blueprint("schema_data", __name__)
 
 @schema_data_blueprint.route("/v1/metadata/source", methods=["GET"])
 @early_return_decorator

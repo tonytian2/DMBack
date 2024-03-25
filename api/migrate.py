@@ -1,39 +1,13 @@
-import json
+import json, decimal, datetime, logging
 from flask import Blueprint, Response, jsonify, make_response, request, session, stream_with_context
 from sqlalchemy import MetaData, text, Table
 from sqlalchemy.orm import sessionmaker
-import decimal, datetime
-import logging
-from api.credentials import localDbConnectionDict, cloudDbConnectionDict, early_return_decorator
 from util.snapshots import snapshot_database_tables, get_latest_snapshot_data
+from util.globals import globalVariables, localDbConnectionDict, cloudDbConnectionDict, early_return_decorator, random_string, history_suffix
 
 NoneType = type(None)
 
-
-class GlobalVariables():
-    def __init__(self):
-        self.migratedRows = {}
-        self.totalRows = 0
-        self.migratedTables = []
-
-    def getMigratedRows(self):
-        return self.migratedRows
-
-    def setMigratedRows(self, tableName, count):
-        self.migratedRows[tableName] = count
-
-    def getMigratedTables(self):
-        return self.migratedTables
-
-    def setMigratedTables(self, t):
-        self.migratedTables.append(t)
-
-
-globalVariables = GlobalVariables()
-
 migrate_blueprint = Blueprint("migrate", __name__)
-random_string = "zkqygj"
-history_suffix = random_string + "history"
 
 def alter_table_statement(table_name,source_metadata):
     table = Table(table_name,source_metadata)
@@ -80,7 +54,7 @@ def add_trigger(con, table_name,source_metadata):
                      """))
 
         
-@migrate_blueprint.route("/v1/create_history", methods=["POST"])
+@migrate_blueprint.route("/v1/create_history", methods=["GET"])
 @early_return_decorator
 def create_history_tables():
     session_id = session["session_id"]
@@ -119,7 +93,7 @@ def create_history_tables():
         
 
 
-    return "OK"    
+    return make_response("OK", 200)    
 
 
 

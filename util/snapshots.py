@@ -58,3 +58,11 @@ def get_latest_snapshot_data(table_name):
                     typed_row.append(value)
             data.append(tuple(typed_row))
     return data
+
+def get_table_list():
+    table_list = []
+    for file_name in os.listdir('snapshot'):
+        if file_name.endswith(".csv"):
+            table_name = file_name.rsplit("_", 1)[0].rsplit("_",1)[0]
+            table_list.append(table_name)
+    return list(table_list)
