@@ -131,6 +131,7 @@ def set_local_credentials():
 def reset():
     clear_session()
     delete_log()
+    delete_snapshot()
     return make_response("OK", 200)
 
 
@@ -149,6 +150,12 @@ def delete_log():
     for file in files:
         if "log" in file:
             os.remove(file)
+
+def delete_snapshot():
+    files = [f for f in os.listdir("snapshot")]
+    for file in files:
+        if "csv" in file:
+            os.remove("snapshot/" + file)
 
 def early_return_decorator(func):
     @functools.wraps(func)
