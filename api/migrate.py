@@ -211,7 +211,7 @@ def migrate_all():
                 destination_session = Session()
 
                 # Save a snapshot of the table data
-                table_row_counts = snapshot_database_tables(source_metadata, source_session)
+                table_row_counts = snapshot_database_tables(source_metadata, source_session, history_suffix)
                 total_row_count = sum(table_row_counts.values())
                 # Run the migration over the table list
                 output = {}

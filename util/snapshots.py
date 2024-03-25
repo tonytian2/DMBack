@@ -4,10 +4,10 @@ from decimal import Decimal
 import os
 
 
-def snapshot_database_tables(source_metadata, source_session):
+def snapshot_database_tables(source_metadata, source_session, history_suffix):
     output = {}
     table_names = source_metadata.tables.keys()
-    filtered_table_names = [tn for tn in table_names if 'zkqygjhistory' not in tn]
+    filtered_table_names = [tn for tn in table_names if history_suffix not in tn]
     if not os.path.exists('snapshot'):
         os.makedirs('snapshot')
 
