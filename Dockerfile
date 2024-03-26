@@ -1,14 +1,13 @@
-FROM python:3.9-slim-buster
+FROM python:alpine
 
 WORKDIR /app
 
 COPY requirements.txt .
 
-
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-EXPOSE 5000
+EXPOSE 4999
 
-CMD ["flask", "--app","main","run", "--host=0.0.0.0"]
+CMD flask --app main run --host=0.0.0.0 -p 4999

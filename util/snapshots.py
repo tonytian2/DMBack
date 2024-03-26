@@ -1,12 +1,13 @@
 import csv
 import datetime
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 import os
 
 
-def snapshot_database_tables(source_metadata, source_session):
+def snapshot_database_tables(source_metadata, source_session, history_suffix):
+    output = {}
     table_names = source_metadata.tables.keys()
-    filtered_table_names = [tn for tn in table_names if 'zkqygjhistory' not in tn]
+    filtered_table_names = [tn for tn in table_names if history_suffix not in tn]
     if not os.path.exists('snapshot'):
         os.makedirs('snapshot')
 
@@ -24,6 +25,8 @@ def snapshot_database_tables(source_metadata, source_session):
             writer.writerow(types)
 
             writer.writerows(rows)
+        output[table_name] = len(rows)
+    return output
 
 
 # get the latest snapshot data as a list
@@ -55,3 +58,11 @@ def get_latest_snapshot_data(table_name):
                     typed_row.append(value)
             data.append(tuple(typed_row))
     return data
+
+def get_table_list():
+    table_list = []
+    for file_name in os.listdir('snapshot'):
+        if file_name.endswith(".csv"):
+            table_name = file_name.rsplit("_", 1)[0].rsplit("_",1)[0]
+            table_list.append(table_name)
+    return list(table_list)

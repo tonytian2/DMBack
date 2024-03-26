@@ -1,11 +1,9 @@
 from flask import Blueprint, jsonify, make_response, session, request
 from sqlalchemy import MetaData, text
 from sqlalchemy.orm import sessionmaker
-from api.credentials import localDbConnectionDict, cloudDbConnectionDict, early_return_decorator
+from util.globals import localDbConnectionDict, cloudDbConnectionDict, early_return_decorator
 from api.migrate import globalVariables
 from util.snapshots import get_latest_snapshot_data
-import csv
-import random
 
 validate_blueprint = Blueprint("validate", __name__)
 

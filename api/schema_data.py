@@ -1,10 +1,10 @@
 from flask import Blueprint, session, make_response, jsonify
 from sqlalchemy import MetaData, text
 from sqlalchemy.orm import sessionmaker
-from api.credentials import localDbConnectionDict, early_return_decorator
+from util.globals import localDbConnectionDict, early_return_decorator
 import os
-schema_data_blueprint = Blueprint("schema_data", __name__)
 
+schema_data_blueprint = Blueprint("schema_data", __name__)
 
 @schema_data_blueprint.route("/v1/metadata/source", methods=["GET"])
 @early_return_decorator
@@ -19,8 +19,10 @@ def get_table_info():
         Session = sessionmaker(bind=source_engine)
         source_session = Session()
         columnNames = {}
+        table_names = source_metadata.tables.keys()
+        filtered_table_names = [table_name for table_name in table_names if "zkqygjhistory" not in table_name]
 
-        for table_name in source_metadata.tables.keys():
+        for table_name in filtered_table_names:
 
             # Get row count
             query = text(
