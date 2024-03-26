@@ -185,11 +185,11 @@ def getSecondValidateCompletenessbyTable():
 
 # validate the local history table and the cloud --> assume it is 100% so does not need for input 
 @validate_blueprint.route("/v1/secondValidation/accuracy", methods=["POST"])
-@early_return_decorator
 def getSecondValidateAccuracy():
-    table_name = request.json.get("table_name")
-    
-    if table_name:
+    table_names = request.json.get("tables")
+    response_messages = []
+
+    if table_names:
         session_id = session["session_id"]
         localDbConnection = localDbConnectionDict[session_id]
         cloudDbConnection = cloudDbConnectionDict[session_id]
@@ -200,86 +200,91 @@ def getSecondValidateAccuracy():
 
             local_metadata = MetaData()
             local_metadata.reflect(local_engine)
-            primary_key = get_primary_key_column(cloud_engine, table_name)
 
-            print(f"primary_key is {primary_key}")
+            for table_name in table_names:
+                primary_key = get_primary_key_column(cloud_engine, table_name)
+                print(f"primary_key is {primary_key}")
 
-            # Check if history table exists
-            history_table_name = table_name + "_zkqygjhistory"
-            if history_table_name not in local_metadata.tables:
-                return make_response("History table does not exist: "+history_table_name, 500)
+                # Check if history table exists
+                history_table_name = table_name + "_zkqygjhistory"
+                if history_table_name not in local_metadata.tables:
+                    response_messages.append(f"History table does not exist for table: {table_name}")
+                    continue
 
-            # Get the latest change from local history table
-            latest_change = get_latest_change_from_history(local_engine, history_table_name, primary_key)
-            
-            print(f"latest_change is {latest_change}")
+                # Get the latest change from local history table
+                latest_change = get_latest_change_from_history(local_engine, history_table_name, primary_key)
+                print(f"latest_change is {latest_change}")
 
-            total_row = len(latest_change)
-            matched_row = 0
+                total_row = len(latest_change)
+                matched_row = 0
 
-            # next step using loop for each history, check for update , insert , delete 
-            for row in latest_change:
+                # Next step is to use a loop for each history and check for update, insert, delete 
+                for row in latest_change:
+                    action = row[0]  # Get the action type (either insert, delete, update)
+                    primary_key_values = row[3:3+len(primary_key)]
+                    where_clause = ' AND '.join([f"{column} = {value}" for column, value in zip(primary_key, primary_key_values)])
 
-                action = row[0]  # get the action type (either insert, delete, update)
-                primary_key_values = row[3:3+len(primary_key)]
-                where_clause = ' AND '.join([f"{column} = {value}" for column, value in zip(primary_key, primary_key_values)])
+                    # Construct the final query
+                    query = f"""SELECT EXISTS (
+                                    SELECT 1 FROM {table_name} 
+                                    WHERE {where_clause}
+                                    ) AS id_exist;"""
 
-                # Construct the final query
-                query = f"""SELECT EXISTS (
-                                SELECT 1 FROM {table_name} 
-                                WHERE {where_clause}
-                                ) AS id_exist;"""
-                
-                with cloud_engine.connect() as con:
-                    r = con.execute(text(query))
-                    result = r.fetchall()
-                    
-                if action == 'insert':
+                    with cloud_engine.connect() as con:
+                        r = con.execute(text(query))
+                        result = r.fetchall()
 
-                    if(result[0] == (1,)):
-                        # means the row in not in the cloud 
-                        matched_row += 1    # the row is in the cloud 
-                    else:
-                        matched_row += 0    # just does nothing here
+                    if action == 'insert':
+                        if result[0] == (1,):
+                            # The row is in the cloud
+                            matched_row += 1
+                        else:
+                            # Just do nothing here
+                            matched_row += 0
 
-                elif action == 'update':
-                    if(result[0] == (0,)):
-                        matched_row += 0    
-                    else:
-                        query = f"""select * from {table_name} where {where_clause}"""
-                        # not only need to check is it in the cloud but also have to check the data
-                        with cloud_engine.connect() as con:
-                            # Execute the query using the provided engine
-                            r2 = con.execute(text(query))
-                        
-                            # Fetch the results and return them
-                            cloud_data = r2.fetchall()
+                    elif action == 'update':
+                        if result[0] == (0,):
+                            matched_row += 0
+                        else:
+                            query = f"""SELECT * FROM {table_name} WHERE {where_clause}"""
+                            # Not only need to check if it's in the cloud but also have to check the data
+                            with cloud_engine.connect() as con:
+                                # Execute the query using the provided engine
+                                r2 = con.execute(text(query))
+                                # Fetch the results and return them
+                                cloud_data = r2.fetchall()
 
-                        local_data = row[3:]
-                        if(cloud_data == local_data):
+                            local_data = row[3:]
+                            if cloud_data == local_data:
+                                matched_row += 1
+                            else:
+                                matched_row += 0
+
+                    elif action == 'delete':
+                        if result[0] == (0,):
+                            # The row does not exist in the cloud
                             matched_row += 1
                         else:
                             matched_row += 0
-                elif action == 'delete':
-                    if(result[0] == (0,)):
-                        # means the row in not exist in the cloud 
-                        matched_row += 1    
+
                     else:
-                        matched_row += 0    
+                        # Handle unrecognized action
+                        print("Unrecognized action:", action)
+
+                if matched_row == total_row:
+                    # Return success message for each table
+                    response_messages.append(f"Second Validation success for table: {table_name}")
                 else:
-                    # Handle unrecognized action
-                    print("Unrecognized action:", action)
-            if(matched_row == total_row):
-                # return yes as json
-                return make_response("Second Validation success", 200)
-            
-            return make_response("Second Validation Not matched ", 200)
-            
+                    # Return failure message for each table
+                    response_messages.append(f"Second Validation not matched for table: {table_name}")
+
+            # Return the combined response messages
+            return make_response("\n".join(response_messages), 200)
 
         else:
             return make_response("Database credentials incorrect.", 500)
     else:
-        return make_response("Table name not provided in the request body.", 400)
+        return make_response("Table names not provided in the request body.", 400)
 
 
 
@@ -390,4 +395,3 @@ def get_accuracy_for_table(tableName, percentage, source_metadata, source_sessio
     accuracy = match_count / len(local_rows) * 100
 
     return accuracy
-
