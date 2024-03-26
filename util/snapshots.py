@@ -31,7 +31,7 @@ def snapshot_database_tables(source_metadata, source_session, history_suffix):
 
 # get the latest snapshot data as a list
 def get_latest_snapshot_data(table_name):
-    csv_snapshots = [file for file in os.listdir('snapshot') if file.startswith(table_name + '_')]
+    csv_snapshots = [file for file in os.listdir('snapshot') if file.rsplit("_", 1)[0].rsplit("_",1)[0] == table_name]
     if not csv_snapshots:
         return None
     latest_snapshot = sorted(csv_snapshots, reverse=True)[0]
