@@ -271,3 +271,119 @@ def migrate_table(table_name, source_metadata, conn, shouldLog = False):
     if shouldLog:
         logging.info("Finished Table:"+table_name)
     return migratedRowCount
+
+def value_wrapper(v):
+    if isinstance(v, NoneType):
+        return "NULL"
+    if  isinstance(v, (int, NoneType, decimal.Decimal, float)):
+        return str(v)
+    if isinstance(v, datetime.date):
+        return '"' + v.strftime("%Y-%m-%d") + '"'
+    if isinstance(v, datetime.datetime):
+        return '"' + v.strftime("%Y-%m-%d %H:%M:%S") + '"'
+    if '"' in v:
+        return "'" + v + "'"
+    return '"' + v + '"'
+
+
+
+@migrate_blueprint.route("/v1/migrate_updates", methods=["POST"])
+@early_return_decorator
+def migrate_updates():
+    session_id = session["session_id"]
+    localDbConnection = localDbConnectionDict[session_id]
+    cloudDbConnection = cloudDbConnectionDict[session_id]
+    response = {"updated_tables":[]}
+    try:
+        if  localDbConnection.isValid and cloudDbConnection.isValid:
+            source_engine = localDbConnection.get_engine()
+            destination_engine = cloudDbConnection.get_engine()
+            
+            # duplicate the schema from local to cloud
+            source_metadata = MetaData()
+            source_metadata.reflect(source_engine)
+            with destination_engine.connect() as destination_con:
+                with source_engine.connect() as con:  
+                    for table_name in source_metadata.tables:
+                        if history_suffix in table_name: 
+                            updated_row_count = con.execute(text(f"select count(*) from  {table_name} where revision_{random_string} = 1;"))
+                            count = updated_row_count.mappings().all()[0]["count(*)"]
+                            
+                            if count != 0:
+                                destination_table_name = table_name.replace("_"+history_suffix,'')
+                                #updated_row_count = con.execute(text(f"select count(*) from  {table_name} where revision_{random_string} = 1;"))
+                                response["updated_tables"].append({destination_table_name:count})
+
+                                table = Table(table_name,source_metadata)
+                                all_col_names = [c.__getattribute__("name") for c in table.c]
+                                print(all_col_names)
+                                primaryKeyColNames = [pk_column.name for pk_column in table.primary_key.columns.values()]
+                                primaryKeyColNames_no_revision = []
+                                for c in primaryKeyColNames:
+                                    if "revision_" + random_string not in c:
+                                        primaryKeyColNames_no_revision.append(c)
+                                
+                                allColNames_no_suffix_no_primary = []
+                                allColNames_no_suffix = []
+                                for c in all_col_names:
+                                    if random_string not in c:
+                                        allColNames_no_suffix.append(c)
+                                        if c not in primaryKeyColNames:
+                                            allColNames_no_suffix_no_primary.append(c) 
+                                
+
+                                select_string_t2 = ", ".join(primaryKeyColNames_no_revision)
+                                inner_join_condition = " AND ".join([f" t1.{c} = t2.{c} " for c in  primaryKeyColNames_no_revision])
+                                query = f"""
+                                SELECT t1.*
+                                FROM {table_name} t1
+                                INNER JOIN
+                                    (
+                                        SELECT {select_string_t2}, MAX(revision_{random_string}) AS max_revision_{random_string}
+                                        FROM {table_name}
+                                        GROUP BY {select_string_t2}
+                                    ) t2
+                                ON {inner_join_condition} AND t1.revision_{random_string} = t2.max_revision_{random_string};"""   
+                                
+                                last_updates = list(con.execute(text(query)).mappings().all())
+                                #print(last_updates.mappings().all())
+                                #where_clause = ' AND '.join([f"{column} = {value}" for column, value in zip(primary_key, primary_key_values)])
+                                #print(last_updates)
+                                for update in last_updates:
+                                    primary_key_condition = ' AND '.join([f" {colName} = {value_wrapper(update[colName])} " for colName in primaryKeyColNames_no_revision])
+                                    insert_values = " ( " + " , ".join([c for c in allColNames_no_suffix]) + " ) " + "values" + " ( " + " , ".join([value_wrapper(update[c]) for c in allColNames_no_suffix]) + " ) "
+                                    update_values = " , ".join([f" {c} = {value_wrapper(update[c])} " for c in allColNames_no_suffix_no_primary])
+                                    delete_query = f"DELETE FROM {destination_table_name} WHERE {primary_key_condition};"
+                                    select_query = f"SELECT * FROM {destination_table_name} WHERE {primary_key_condition};"
+                                    insert_query = f"INSERT into {destination_table_name} {insert_values} ;"
+                                    update_query = f"UPDATE {destination_table_name} SET {update_values} WHERE {primary_key_condition};"
+                                    if (update["action_"+random_string] == "delete"):
+                                        destination_con.execute(text(delete_query))
+                                        print(delete_query)
+                                    elif update["action_"+random_string] in ['update', 'insert'] :
+                                        if (destination_con.execute(text(select_query)).rowcount == 0):  
+                                            destination_con.execute(text(insert_query))
+                                            print(insert_query)
+                                        elif (destination_con.execute(text(select_query)).rowcount == 1):  
+                                            destination_con.execute(text(update_query))
+                                            print(update_query)
+                                        else:
+                                            return make_response("not ok, wrong history table structure" , 500)
+                                    else:
+                                        return  make_response("not ok, wrong history table structure" , 500)
+                                            
+                                            
+                                                
+                        # con.execute(text(f"CREATE TABLE {table_name}_{history_suffix} LIKE {table_name};"))
+                            #create_history_table_statements += create_history_table_template(table_name)
+                            #print(create_history_table_statements)
+                    
+                    con.commit()
+                destination_con.commit()
+            return make_response(jsonify(response), 200)    
+        else:
+            return make_response("Database credentials incorrect.", 500)
+               
+    except Exception as e:
+        return   make_response("not ok" + str(e), 500)
+    
