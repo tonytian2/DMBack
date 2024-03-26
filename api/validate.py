@@ -8,7 +8,7 @@ from util.snapshots import get_latest_snapshot_data
 validate_blueprint = Blueprint("validate", __name__)
 
 # validate completeness of the cloud against the snapshot csvs
-@validate_blueprint.route("/v1/validation/completeness", methods=["GET", "POST"])
+@validate_blueprint.route("/v1/firstValidation/completeness", methods=["GET", "POST"])
 @early_return_decorator
 def getValidateCompleteness():
     session_id = session["session_id"]
@@ -64,7 +64,7 @@ def validate_snapshot_completeness(table_names, cloud_engine):
 
     return output
 
-@validate_blueprint.route("/v1/validation/accuracy/<accuracy>", methods=["GET", "POST"])
+@validate_blueprint.route("/v1/firstValidation/accuracy/<accuracy>", methods=["GET", "POST"])
 @early_return_decorator
 def getValidateAccuracy(accuracy):
     session_id = session["session_id"]
@@ -95,8 +95,43 @@ def getValidateAccuracy(accuracy):
         return make_response(json_response, 200)
     else:
         return make_response("Cloud credentials incorrect", 500)
-    
 
+
+def validate_snapshot_accuracy(table_names, cloud_engine, percentage):
+    Session = sessionmaker(bind=cloud_engine)
+    cloud_session = Session()
+    output = {}
+    for table_name in table_names:
+        snapshot_data = get_latest_snapshot_data(table_name)
+        if snapshot_data is None:
+            output[table_name] = {
+                "error": "Snapshot data not found"
+            }
+        else:
+            snapshot_data = get_latest_snapshot_data(table_name)
+            snapshot_row_count = len(snapshot_data)
+            snapshot_rows = snapshot_data[:max(1, int(snapshot_row_count * float(percentage)))]
+            cloud_rows = cloud_session.execute(text(f"SELECT * from {table_name} LIMIT {max(1,int(snapshot_row_count * float(percentage)))}")).fetchall()
+
+            # # FOR DEBUGGING
+            # match_count = 0
+            # for snapshot_row, cloud_row in zip(snapshot_rows, cloud_rows):
+            #     print("ss:")
+            #     print(snapshot_row)
+            #     print("cl:")
+            #     print(cloud_row)
+            #     if snapshot_row == cloud_row:
+            #         match_count += 1
+
+
+            match_count = sum(snapshot_row == cloud_row for snapshot_row, cloud_row in zip(snapshot_rows, cloud_rows))
+
+            accuracy = match_count / len(snapshot_rows) * 100
+            output[table_name] = {
+                "accuracy": accuracy
+            }
+
+    return output
 
 # validate completeness of specific tables
 @validate_blueprint.route("/v1/secondValidation/completeness", methods=["POST"])
