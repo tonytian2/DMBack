@@ -19,7 +19,7 @@ def snapshot_database_tables(source_metadata, source_session, history_suffix):
         types = [source_column.type for source_column in source_table.columns]
         filepath = 'snapshot/' + table_name + '_' + timestamp + '.csv'
         
-        with open(filepath, 'w', newline='') as csvfile:
+        with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
             writer = csv.writer(csvfile)
             writer.writerow(fieldnames)
             writer.writerow(types)
@@ -36,7 +36,7 @@ def get_latest_snapshot_data(table_name):
         return None
     latest_snapshot = sorted(csv_snapshots, reverse=True)[0]
     filepath = 'snapshot/' + latest_snapshot
-    with open(filepath, 'r', newline='') as csvfile:
+    with open(filepath, 'r', newline='',encoding='utf-8') as csvfile:
         reader = csv.reader(csvfile)
         next(reader) # skip header
         types = next(reader)

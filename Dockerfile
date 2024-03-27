@@ -10,4 +10,4 @@ COPY . .
 
 EXPOSE 4999
 
-CMD flask --app main run --host=0.0.0.0 -p 4999
+CMD flask --app main run --host=0.0.0.0 -p 4999 --debug
