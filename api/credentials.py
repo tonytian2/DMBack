@@ -66,12 +66,13 @@ def set_local_credentials():
 
 @credentials_blueprint.route("/v1/session", methods=["DELETE"])
 def reset():
-    session_id = session["session_id"]
-    if session_id in localDbConnectionDict:
-        delete_history(localDbConnectionDict[session_id])
-    clear_session()
     delete_log()
     delete_snapshot()
+    if "session_id" in session:
+        session_id = session["session_id"]
+        if session_id in localDbConnectionDict:
+            delete_history(localDbConnectionDict[session_id])
+        clear_session()
     return make_response("OK", 200)
 
 
