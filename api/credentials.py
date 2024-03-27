@@ -103,7 +103,7 @@ def delete_history(localDbConnection):
     source_metadata.reflect(source_engine)
     with source_engine.connect() as conn:
         for table_name in source_metadata.tables:
-            if history_suffix in table_name:
+            if history_suffix not in table_name:
                 conn.execute(text(f"DROP TRIGGER IF EXISTS {table_name}__ai"))
                 conn.execute(text(f"DROP TRIGGER IF EXISTS {table_name}__au"))
                 conn.execute(text(f"DROP TRIGGER IF EXISTS {table_name}__bd"))
