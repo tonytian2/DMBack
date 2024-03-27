@@ -1,6 +1,6 @@
 import json, decimal, datetime, logging
 from flask import Blueprint, Response, jsonify, make_response, request, session, stream_with_context
-from sqlalchemy import MetaData, text, Table
+from sqlalchemy import Inspector, MetaData, text, Table
 from sqlalchemy.orm import sessionmaker
 from util.snapshots import snapshot_database_tables, get_latest_snapshot_data
 from util.globals import globalVariables, localDbConnectionDict, cloudDbConnectionDict, early_return_decorator, random_string, history_suffix
@@ -128,7 +128,6 @@ def migrate_tables():
                 destination_session = Session()
 
                 # Run the migration over the table list
-                # TODO: replace this
                 output = migrate_table_list(table_names, source_metadata, destination_engine)
                 # Commit the changes in the destination database
                 destination_session.commit()
@@ -161,7 +160,9 @@ def migrate_all():
                 
                 # duplicate the schema from local to cloud
                 meta = MetaData()
-                meta.reflect(source_engine)
+                inspector = Inspector.from_engine(source_engine)
+                valid_table_names = [name for name in inspector.get_table_names() if history_suffix not in name]
+                meta.reflect(bind=source_engine, only=valid_table_names)
                 meta.create_all(destination_engine)
 
                 current_time = datetime.datetime.now().strftime("%Y-%m-%d_%H;%M;%S")
