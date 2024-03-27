@@ -108,5 +108,6 @@ def delete_history(localDbConnection):
                 conn.execute(text(f"DROP TRIGGER IF EXISTS {table_name}__ai"))
                 conn.execute(text(f"DROP TRIGGER IF EXISTS {table_name}__au"))
                 conn.execute(text(f"DROP TRIGGER IF EXISTS {table_name}__bd"))
+            else:
                 conn.execute(text(f"DROP table IF EXISTS {table_name}"))
         conn.commit()
