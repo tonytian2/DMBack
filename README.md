@@ -29,9 +29,11 @@ py -3 -m venv .venv
 .venv\Scripts\activate
 ```
 ### Install dependencies
-
+(See requirements.txt for updated list)
 ```bash
+pip install cryptography
 pip install flask
+pip install flask_cors
 pip install sqlalchemy
 pip install pymysql
 pip install mysql-connector-python
@@ -55,9 +57,9 @@ MY_CLOUD_DB_PASSWORD=your_cloud_db_password
 
 Start the server using the following command:
 ```bash
-flask --app main run --debug
+flask --app main run --debug [-p ####]
 ```
-Make requests to `localhost:5000`
+Make requests to `localhost:5000` by default; specify port using optional `-p ####` argument
 
 the `--debug` flag means the server will auto-reload when a change is detected.
 
@@ -67,3 +69,8 @@ Run tests using the following command:
 python .\tests\{test_filename.py}
 ```
 The test file will automatically start and terminate the server.
+
+## Docker image
+
+This project's Docker image is hosted on Docker Hub under `fdmsam/dmback`: https://hub.docker.com/repository/docker/fdmsam/dmback/general
+
