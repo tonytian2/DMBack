@@ -1,20 +1,24 @@
-import unittest
 import subprocess
-import requests
 import time
+import unittest
+
+import requests
 from dotenv import dotenv_values
 
+config = dotenv_values(".env")
 
-config = dotenv_values('.env')
+
 class MetadataTestCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.server_process = subprocess.Popen(['flask', '--app', 'main','run','--debug'])
+        cls.server_process = subprocess.Popen(
+            ["flask", "--app", "main", "run", "--debug"]
+        )
         time.sleep(2)
 
     def setUp(self):
-        self.base_url="http://localhost:5000"
-    
+        self.base_url = "http://localhost:5000"
+
     def tearDown(self):
         return super().tearDown()
 
@@ -25,41 +29,47 @@ class MetadataTestCase(unittest.TestCase):
             cls.server_process.wait()
 
     def test_get_table_info_without_session(self):
-        response = requests.get(self.base_url + '/v1/metadata/source')
+        response = requests.get(self.base_url + "/v1/metadata/source")
         self.assertEqual(response.status_code, 401)
-        self.assertEqual(response.text,"No connection defined in current session, define session credentials first")
+        self.assertEqual(
+            response.text,
+            "No connection defined in current session, define session credentials first",
+        )
         print("Test case: no session before calling metadata: PASSED")
 
     def test_get_table_with_wrong_credentials(self):
         data = {
-            'local_username': config['MY_LOCAL_DB_USERNAME'],
-            'local_password': config['MY_LOCAL_DB_PASSWORD']+"x",
-            'local_url': config['MY_LOCAL_DB_URL'],
-            'cloud_username': config['MY_CLOUD_DB_USERNAME'],
-            'cloud_password': config['MY_CLOUD_DB_PASSWORD'],
-            'cloud_url': config['MY_CLOUD_DB_URL']
+            "local_username": config["MY_LOCAL_DB_USERNAME"],
+            "local_password": config["MY_LOCAL_DB_PASSWORD"] + "x",
+            "local_url": config["MY_LOCAL_DB_URL"],
+            "cloud_username": config["MY_CLOUD_DB_USERNAME"],
+            "cloud_password": config["MY_CLOUD_DB_PASSWORD"],
+            "cloud_url": config["MY_CLOUD_DB_URL"],
         }
-        cookie = requests.post(self.base_url + '/v1/credentials', data=data).cookies.get('session')
-        cookies = {'session': cookie}
-        response = requests.get(self.base_url + '/v1/metadata/source', cookies=cookies)
+        cookie = requests.post(
+            self.base_url + "/v1/credentials", data=data
+        ).cookies.get("session")
+        cookies = {"session": cookie}
+        response = requests.get(self.base_url + "/v1/metadata/source", cookies=cookies)
         self.assertEqual(response.status_code, 500)
         self.assertEqual(response.text, "No connection to local database")
         print("Test case: session credentials incorrect when calling metadata: PASSED")
 
-
     def test_get_table(self):
         data = {
-            'local_username': config['MY_LOCAL_DB_USERNAME'],
-            'local_password': config['MY_LOCAL_DB_PASSWORD'],
-            'local_url': config['MY_LOCAL_DB_URL'],
-            'cloud_username': config['MY_CLOUD_DB_USERNAME'],
-            'cloud_password': config['MY_CLOUD_DB_PASSWORD'],
-            'cloud_url': config['MY_CLOUD_DB_URL']
+            "local_username": config["MY_LOCAL_DB_USERNAME"],
+            "local_password": config["MY_LOCAL_DB_PASSWORD"],
+            "local_url": config["MY_LOCAL_DB_URL"],
+            "cloud_username": config["MY_CLOUD_DB_USERNAME"],
+            "cloud_password": config["MY_CLOUD_DB_PASSWORD"],
+            "cloud_url": config["MY_CLOUD_DB_URL"],
         }
-        cookie = requests.post(self.base_url + '/v1/credentials', data=data).cookies.get('session')
-        cookies = {'session': cookie}
-        
-        response = requests.get(self.base_url + '/v1/metadata/source', cookies=cookies)
+        cookie = requests.post(
+            self.base_url + "/v1/credentials", data=data
+        ).cookies.get("session")
+        cookies = {"session": cookie}
+
+        response = requests.get(self.base_url + "/v1/metadata/source", cookies=cookies)
         expectedResponse = {
             "metadata": {
                 "customers": {
@@ -76,9 +86,9 @@ class MetadataTestCase(unittest.TestCase):
                         "postalCode",
                         "country",
                         "salesRepEmployeeNumber",
-                        "creditLimit"
+                        "creditLimit",
                     ],
-                    "rows": 122
+                    "rows": 122,
                 },
                 "employees": {
                     "columns": [
@@ -89,9 +99,9 @@ class MetadataTestCase(unittest.TestCase):
                         "email",
                         "officeCode",
                         "reportsTo",
-                        "jobTitle"
+                        "jobTitle",
                     ],
-                    "rows": 23
+                    "rows": 23,
                 },
                 "offices": {
                     "columns": [
@@ -103,9 +113,9 @@ class MetadataTestCase(unittest.TestCase):
                         "state",
                         "country",
                         "postalCode",
-                        "territory"
+                        "territory",
                     ],
-                    "rows": 7
+                    "rows": 7,
                 },
                 "orderdetails": {
                     "columns": [
@@ -113,9 +123,9 @@ class MetadataTestCase(unittest.TestCase):
                         "productCode",
                         "quantityOrdered",
                         "priceEach",
-                        "orderLineNumber"
+                        "orderLineNumber",
                     ],
-                    "rows": 2996
+                    "rows": 2996,
                 },
                 "orders": {
                     "columns": [
@@ -125,27 +135,27 @@ class MetadataTestCase(unittest.TestCase):
                         "shippedDate",
                         "status",
                         "comments",
-                        "customerNumber"
+                        "customerNumber",
                     ],
-                    "rows": 326
+                    "rows": 326,
                 },
                 "payments": {
                     "columns": [
                         "customerNumber",
                         "checkNumber",
                         "paymentDate",
-                        "amount"
+                        "amount",
                     ],
-                    "rows": 273
+                    "rows": 273,
                 },
                 "productlines": {
                     "columns": [
                         "productLine",
                         "textDescription",
                         "htmlDescription",
-                        "image"
+                        "image",
                     ],
-                    "rows": 7
+                    "rows": 7,
                 },
                 "products": {
                     "columns": [
@@ -157,15 +167,16 @@ class MetadataTestCase(unittest.TestCase):
                         "productDescription",
                         "quantityInStock",
                         "buyPrice",
-                        "MSRP"
+                        "MSRP",
                     ],
-                    "rows": 110
-                }
+                    "rows": 110,
+                },
             },
-            "recovered": {}
+            "recovered": {},
         }
         self.assertEqual(response.json(), expectedResponse)
         print("Test case: get source table metadata: PASSED")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

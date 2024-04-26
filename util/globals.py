@@ -5,7 +5,8 @@ from sqlalchemy import create_engine
 random_string = "zkqygj"
 history_suffix = random_string + "history"
 
-class GlobalVariables():
+
+class GlobalVariables:
     def __init__(self):
         self.migratedRows = {}
         self.totalRows = 0
@@ -73,7 +74,7 @@ class DbConnection(object):
         Returns the engine that connects to the database. If an engine does not exist, it creates one
         """
 
-        if self.connector != None and self.engine == None:
+        if self.connector is not None and self.engine is None:
             self.engine = create_engine(self.connection_string())
         return self.engine
 
@@ -89,13 +90,15 @@ class DbConnection(object):
 localDbConnectionDict = {}
 cloudDbConnectionDict = {}
 
+
 def early_return_decorator(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         if "session_id" not in session:
             return make_response(
                 "No connection defined in current session, define session credentials first",
-                401
+                401,
             )
         return func(*args, **kwargs)
+
     return wrapper

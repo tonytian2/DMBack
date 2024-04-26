@@ -1,10 +1,18 @@
+import os
+import secrets
+
 from flask import Blueprint, make_response, request, session
 from sqlalchemy import MetaData, text
-from util.globals import history_suffix, localDbConnectionDict, cloudDbConnectionDict, DbConnection
-import secrets
-import os
+
+from util.globals import (
+    DbConnection,
+    cloudDbConnectionDict,
+    history_suffix,
+    localDbConnectionDict,
+)
 
 credentials_blueprint = Blueprint("credentials", __name__)
+
 
 @credentials_blueprint.route("/v1/credentials", methods=["POST"])
 def set_local_credentials():
@@ -82,21 +90,22 @@ def clear_session():
         del localDbConnectionDict[session_id]
         del cloudDbConnectionDict[session_id]
         session.clear()
-        
-        
-        
+
+
 def delete_log():
     files = [f for f in os.listdir()]
-    
+
     for file in files:
         if "log" in file:
             os.remove(file)
+
 
 def delete_snapshot():
     files = [f for f in os.listdir("snapshot")]
     for file in files:
         if "csv" in file:
             os.remove("snapshot/" + file)
+
 
 def delete_history(localDbConnection):
     source_engine = localDbConnection.get_engine()
